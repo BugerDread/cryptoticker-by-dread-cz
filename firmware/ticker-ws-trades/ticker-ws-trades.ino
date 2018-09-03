@@ -369,7 +369,24 @@ void loop() {
   if (symarray[symidx].price != prevprice) {
     //ld.clear(2);
     prevprice = symarray[symidx].price;
-    ld.print(String((float(long((prevprice + 0.005) * 100)) / 100.0)), 2); //print on 2nd module
+    //ld.print(String((float(long((prevprice + 0.005) * 100)) / 100.0)), 2); //print on 2nd module
+    if (prevprice >= 1000000) {
+      ld.print(String(prevprice, 0), 2); //print no decimal places
+    } else if (prevprice >= 10) {
+      ld.print(String(prevprice, 2), 2); //print 2 decimal places
+    } else {
+      //its smaller than 10, lets count how many decimals we need to display
+      byte needdeci = 2;  //lets start with 2
+      float temppr = prevprice;
+      while ((temppr < 10) and (needdeci < 7)) {
+        needdeci++;
+        temppr = temppr * 10;
+      }
+      ld.print(String(prevprice, needdeci), 2); //print needdeci decimal places
+    }
+    
+    
+    
     Serial.println(F("[Dis] display updated"));
     // Serial.printf("[Net] RSSI: %d dBm\n", WiFi.RSSI());
     
