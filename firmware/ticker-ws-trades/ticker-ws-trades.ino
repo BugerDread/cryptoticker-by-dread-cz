@@ -256,7 +256,7 @@ void setup() {
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
   WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol", symbol, 64);
-  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [0 - 15]", sbrightness, 2);
+  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [1 - 16]", sbrightness, 2);
   WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", symtime, 3);
 
   WiFiManager wifiManager;                                //Local intialization. Once its business is done, there is no need to keep it around
@@ -279,6 +279,15 @@ void setup() {
 
   ld.print("  wifi  ", 1);
   ld.print(" online ", 2);
+
+  while (((String(custom_sbrightness.getValue()).toInt()) <= 0) or ((String(custom_sbrightness.getValue()).toInt()) > 16) or 
+    ((String(custom_symtime.getValue()).toInt()) <= 0) or ((String(custom_symtime.getValue()).toInt()) > 999))
+    {
+    Serial.println(F("Parametters out of range, restart config portal"));
+    ld.print("wifi ok ", 1);
+    ld.print("cfg err ", 2);
+    wifiManager.startConfigPortal("Bgr ticker", "btcbtcbtc");
+  }
   
   strcpy(symbol, custom_symbol.getValue());               //read updated parameters
   strcpy(sbrightness, custom_sbrightness.getValue());               //read updated parameters
@@ -305,7 +314,7 @@ void setup() {
   }
   long i = String(sbrightness).toInt();
   if (( i>= 0 ) and (i <= 15)) {
-    ld.setBright(i, ALL_MODULES);
+    ld.setBright(i - 1, ALL_MODULES);
     Serial.print("Setting display brightness to: ");
     Serial.println(i);
   }
