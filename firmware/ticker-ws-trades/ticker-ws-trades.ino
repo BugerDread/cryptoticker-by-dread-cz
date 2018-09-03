@@ -167,15 +167,15 @@ void parsepl() {
       float tp = 0;
 
       if (root[1] == "hb") {  //its a heartbeat
-        USE_SERIAL.println(F("[Prs] Heartbeat!"));
+      //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
       } else if ((root[1] == "tu") and (root[2][3] > 0.0)) { //its update
         USE_SERIAL.print(F("[Prs] Update, new price: "));
         tp = root[2][3];
-        USE_SERIAL.println(tp, 2);
+        USE_SERIAL.println(tp);
       } else if (root[1][0][3] > 0.0) { //snapshot
         USE_SERIAL.print(F("[Prs] Snapshot, price: "));
         tp = root[1][0][3];
-        USE_SERIAL.println(tp, 2);
+        USE_SERIAL.println(tp);
       }
 
       //root[0] contains chanid of received message
@@ -184,8 +184,8 @@ void parsepl() {
         for (byte i = 0; i <= symnum; i++) { //iterate the array
           if (symarray[i].chanid == root[0]) {  //we found it
             symarray[i].price = tp;
-            USE_SERIAL.print(F("[Prs] array updated, i = "));
-            USE_SERIAL.println(i);
+           // USE_SERIAL.print(F("[Prs] array updated, i = "));
+           // USE_SERIAL.println(i);
             break;
           }
         }
@@ -387,7 +387,7 @@ void loop() {
     
     
     
-    Serial.println(F("[Dis] display updated"));
+   // Serial.println(F("[Dis] display updated"));
     // Serial.printf("[Net] RSSI: %d dBm\n", WiFi.RSSI());
     
   }
