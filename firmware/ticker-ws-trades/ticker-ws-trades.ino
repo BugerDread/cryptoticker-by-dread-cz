@@ -4,7 +4,6 @@
 #include <ArduinoJson.h>
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-// #include <ESP8266WiFiMulti.h>
 #include <WebSocketsClient.h>
 #include <Hash.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
@@ -16,6 +15,8 @@
 #define LED_BLINKMS 1       //led blink duration [ms]
 #define DISP_BRGTH  8      //brightness of the display
 #define DISP_AMOUNT 2       //number of max 7seg modules connected
+#define WS_RECONNECT_INTERVAL 10000  // websocket reconnec interval
+
 
 //define your default values here, if there are different values in config.json, they are overwritten.
 char symbol[66] = "BTCUSD";
@@ -37,18 +38,18 @@ String pays = "";
 bool shouldSaveConfig = false;
 
 //array for ticker data
-struct symboldata {
+struct symboldata_t {
   String symbol;
   word chanid;
   float price;
 };
 
 int symnum = 0;
-symboldata symarray[16];
+symboldata_t symarray[16];
 
 int symidx, subsidx = 0;   
 int prevsymidx = -1;
-Ticker symticker;
+Ticker symticker; //ticker to switch symbols
 
 void nextsymidx () {
   //move to next symbol
@@ -326,6 +327,7 @@ void setup() {
 
   webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
   webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
 
   pinMode(0, INPUT_PULLUP);  //button for reset of params
   ld.clear(ALL_MODULES);
