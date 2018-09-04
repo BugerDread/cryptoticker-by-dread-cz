@@ -9,7 +9,7 @@
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
 // configuration
-#define SPI_SPEED   8000000 //SPI@1MHZ
+#define SPI_SPEED   8000000 //SPI@8MHZ
 #define SPI_CSPIN   5       //SPI CS=GPIO5
 #define USE_SERIAL  Serial
 #define LED_BLINKMS 1       //led blink duration [ms]
@@ -17,6 +17,8 @@
 #define DISP_AMOUNT 2       //number of max 7seg modules connected
 #define WS_RECONNECT_INTERVAL 10000  // websocket reconnec interval
 
+const char REQ1[] PROGMEM = "{\"event\":\"subscribe\",\"channel\":\"trades\",\"symbol\":\"t";
+const char REQ2[] PROGMEM = "\"}";
 
 //define your default values here, if there are different values in config.json, they are overwritten.
 char symbol[66] = "BTCUSD";
@@ -28,7 +30,7 @@ WebSocketsClient webSocket;
 BgrMax7seg ld = BgrMax7seg(SPI_SPEED, SPI_CSPIN, DISP_AMOUNT); //init display
 Ticker ledtimer;
 Ticker ticker;
-word chid = 0; //ws channel id
+// word chid = 0; //ws channel id
 float price = -1;
 float prevprice = -1;
 String pays = "";
@@ -40,21 +42,21 @@ bool shouldSaveConfig = false;
 //array for ticker data
 struct symboldata_t {
   String symbol;
-  word chanid;
+  long chanid;
   float price;
 };
 
 int symnum = 0;
 symboldata_t symarray[16];
 
-int symidx, subsidx = 0;   
+int symidx, subsidx = 0;
 int prevsymidx = -1;
 Ticker symticker; //ticker to switch symbols
 
 void nextsymidx () {
   //move to next symbol
   symidx++;
-  if (symidx > symnum) {
+  if (symidx >= subsidx) {
     symidx = 0;
   }
 }
@@ -68,15 +70,13 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   ticker.attach(0.2, tick);
   ld.print(" config ", 1);
   ld.print("192.168.4.1", 2);
-  //ld.print("8.8.8.8.8.8.8.8.", ALL_MODULES);
 }
 
 //callback notifying us of the need to save config
 void saveConfigCallback () {
-  Serial.println("Should save config");
+  Serial.println(F("Should save config"));
   shouldSaveConfig = true;
 }
-
 
 void ledoff() {
   digitalWrite(LED_BUILTIN, HIGH);
@@ -92,7 +92,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch (type) {
     case WStype_DISCONNECTED: {
         USE_SERIAL.println(F("[WSc] Disconnected!"));
-        chid = 0;
+        subsidx = 0;  //no symbols subscribed
       }
       break;
     case WStype_CONNECTED: {
@@ -130,45 +130,38 @@ void parsepl() {
   if (root.success()) {
     //   USE_SERIAL.println(F("[Prs] its json object"));
     if (root["event"] == "info") {
-      if (symarray[subsidx].chanid == 0) {
+      if (subsidx == 0) {
         USE_SERIAL.print(F("[Prs] Got info, lets subscribe 1st ticker symbol: "));
-        String request = symarray[subsidx].symbol;
-        USE_SERIAL.println(request);
-        request.toUpperCase();
-        request = "{\"event\":\"subscribe\",\"channel\":\"trades\",\"symbol\":\"t" + request;
-        request += "\"}";
+        String request = FPSTR(REQ1);
+        request += symarray[subsidx].symbol;
+        request += FPSTR(REQ2);
         webSocket.sendTXT(request);
       }
-    } else if (root["event"] == "subscribed") {
-      if (root["chanId"] != 0) {
+    } else if (root["event"] == "subscribed")  {
+      if (root["chanId"] != false) {
         symarray[subsidx].chanid = root["chanId"];
         USE_SERIAL.print(F("[Prs] Ticker subscribe success, channel id: "));
         USE_SERIAL.println(symarray[subsidx].chanid);
         subsidx++;  //move to next symbol in array
-        if (subsidx <= symnum) { //subscribe next
+        if (subsidx < symnum) { //subscribe next
           USE_SERIAL.print(F("[Prs] Lets subscribe next ticker symbol: "));
-          String request = symarray[subsidx].symbol;
-          USE_SERIAL.println(request);
-          request.toUpperCase();
-          request = "{\"event\":\"subscribe\",\"channel\":\"trades\",\"symbol\":\"t" + request;
-          request += "\"}";
+          String request = FPSTR(REQ1);
+          request += symarray[subsidx].symbol;
+          request += FPSTR(REQ2);
           webSocket.sendTXT(request);
         }
       } else {
         USE_SERIAL.println(F("[Prs] Ticker subscribe failed"));
       }
     }
-  }
-  else {
+  } else {
     JsonArray& root = jsonBuffer.parseArray(pays);
     // Test if parsing succeeds.
     if (root.success()) {
       //   USE_SERIAL.println(F("[Prs] its an array"));
-
       float tp = 0;
-
       if (root[1] == "hb") {  //its a heartbeat
-      //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
+        //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
       } else if ((root[1] == "tu") and (root[2][3] > 0.0)) { //its update
         USE_SERIAL.print(F("[Prs] Update, new price: "));
         tp = root[2][3];
@@ -182,11 +175,11 @@ void parsepl() {
       //root[0] contains chanid of received message
       //find the symbol in array and set the prize if we have some prizze
       if (tp != 0) {  //if we have prize
-        for (byte i = 0; i <= symnum; i++) { //iterate the array
+        for (byte i = 0; i < symnum; i++) { //iterate the array
           if (symarray[i].chanid == root[0]) {  //we found it
             symarray[i].price = tp;
-           // USE_SERIAL.print(F("[Prs] array updated, i = "));
-           // USE_SERIAL.println(i);
+            // USE_SERIAL.print(F("[Prs] array updated, i = "));
+            // USE_SERIAL.println(i);
             break;
           }
         }
@@ -195,6 +188,28 @@ void parsepl() {
   }
   pays = "";
   //blinkled();
+}
+
+void parsesymbols(String s) {
+  //lets count symbols and put them into symarray
+  int last = 0;
+  int pos = 0;
+  symnum = 0;
+  while ((pos != -1) and (symnum <= 16) and (s.length() > 0)) {
+    pos = s.indexOf(' ', last);
+    if (pos == -1) { //last symbol
+      USE_SERIAL.print(F("[Setup] last symbol: "));
+      USE_SERIAL.println(s.substring(last));
+      symarray[symnum].symbol = s.substring(last);
+    } else {
+      USE_SERIAL.print(F("[Setup] add symbol: "));
+      USE_SERIAL.println(s.substring(last, pos));
+      symarray[symnum].symbol = s.substring(last, pos);
+      last = pos + 1;
+    }
+    symarray[symnum].symbol.toUpperCase();
+    symnum++;
+  }
 }
 
 void setup() {
@@ -216,7 +231,7 @@ void setup() {
   ld.print("boot v14", 1);
   ld.print("connect ", 2);
 
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+  //WiFi.setPhyMode(WIFI_PHY_MODE_11G);
 
   // wifi manager = config save / load
   //read configuration from FS json
@@ -281,18 +296,22 @@ void setup() {
   ld.print("  wifi  ", 1);
   ld.print(" online ", 2);
 
-  while (((String(custom_sbrightness.getValue()).toInt()) <= 0) or ((String(custom_sbrightness.getValue()).toInt()) > 16) or 
-    ((String(custom_symtime.getValue()).toInt()) <= 0) or ((String(custom_symtime.getValue()).toInt()) > 999))
-    {
+  parsesymbols(String(custom_symbol.getValue()));
+
+  while (((String(custom_sbrightness.getValue()).toInt()) <= 0) or ((String(custom_sbrightness.getValue()).toInt()) > 16) or
+         ((String(custom_symtime.getValue()).toInt()) <= 0) or ((String(custom_symtime.getValue()).toInt()) > 999) or 
+         (symnum == 0))
+  {
     Serial.println(F("Parametters out of range, restart config portal"));
     ld.print("wifi ok ", 1);
     ld.print("cfg err ", 2);
     wifiManager.startConfigPortal("Bgr ticker", "btcbtcbtc");
+    parsesymbols(String(custom_symbol.getValue()));
   }
-  
+
   strcpy(symbol, custom_symbol.getValue());               //read updated parameters
   strcpy(sbrightness, custom_sbrightness.getValue());               //read updated parameters
-  strcpy(symtime, custom_symtime.getValue());  
+  strcpy(symtime, custom_symtime.getValue());
 
   //save the custom parameters to FS
   if (shouldSaveConfig) {
@@ -314,7 +333,7 @@ void setup() {
     //end save
   }
   long i = String(sbrightness).toInt();
-  if (( i>= 0 ) and (i <= 15)) {
+  if (( i >= 0 ) and (i <= 15)) {
     ld.setBright(i - 1, ALL_MODULES);
     Serial.print("Setting display brightness to: ");
     Serial.println(i);
@@ -324,46 +343,28 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   ticker.detach();   //stop flashing the led
-
-  webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
-  webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
+  digitalWrite(LED_BUILTIN, HIGH);
 
   pinMode(0, INPUT_PULLUP);  //button for reset of params
   ld.clear(ALL_MODULES);
-//  ld.print(String(symbol) + ' ', 1);  //show symbol name on 1st module
-  ld.print("bitfinex", 2);  //show sth on 2nd module
 
-  //lets count symbols and put them into array
-  String s = symbol;
-  int last = 0;
-  int pos = 0;
-  while ((pos != -1) and (symnum < 16)) {
-    pos = s.indexOf(' ', last);
-    if (pos == -1) { //last symbol
-      USE_SERIAL.print(F("[Setup] last symbol: "));
-      USE_SERIAL.println(s.substring(last));
-      symarray[symnum].symbol = s.substring(last);
-      USE_SERIAL.print(F("[Setup] symnum = "));
-      USE_SERIAL.println(symnum);
-      //break;
-    } else {
-      USE_SERIAL.print(F("[Setup] add symbol: "));
-      USE_SERIAL.println(s.substring(last, pos));
-      symarray[symnum].symbol = s.substring(last, pos);
-      last = pos + 1;
-      symnum++;
-    }
-    
-  }
+  
+  USE_SERIAL.print(F("[Setup] symnum = "));
+  USE_SERIAL.println(symnum);
 
   USE_SERIAL.print(F("[Setup] symbol cycle time: "));
   USE_SERIAL.println(String(symtime).toInt());
   symticker.attach(String(symtime).toInt(), nextsymidx);
+
+  //start the connection
+  webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
 }
 
 void loop() {
   webSocket.loop();
+  
   if (digitalRead(0) == LOW) {
     Serial.println(F("[Sys] clear settings button pressed"));
     digitalWrite(LED_BUILTIN, LOW);
@@ -372,39 +373,41 @@ void loop() {
     delay(2000);
     digitalWrite(LED_BUILTIN, HIGH);
     ESP.reset();
-
   }
+  
   if (pays != "") {
     parsepl();
   }
-  if (symarray[symidx].price != prevprice) {
-    //ld.clear(2);
-    prevprice = symarray[symidx].price;
-    //ld.print(String((float(long((prevprice + 0.005) * 100)) / 100.0)), 2); //print on 2nd module
-    if (prevprice >= 1000000) {
-      ld.print(String(prevprice, 0), 2); //print no decimal places
-    } else if (prevprice >= 10) {
-      ld.print(String(prevprice, 2), 2); //print 2 decimal places
-    } else {
-      //its smaller than 10, lets count how many decimals we need to display
-      byte needdeci = 2;  //lets start with 2
-      float temppr = prevprice;
-      while ((temppr < 10) and (needdeci < 7)) {
-        needdeci++;
-        temppr = temppr * 10;
+
+  //display prizze
+  if (subsidx > 0) {  //if there is sth subscribed
+    if (symarray[symidx].price != prevprice) {
+      prevprice = symarray[symidx].price;
+      if (prevprice >= 1000000) {
+        ld.print(String(prevprice, 0), 2); //print no decimal places
+      } else if (prevprice >= 10) {
+        ld.print(String(prevprice, 2), 2); //print 2 decimal places
+      } else {
+        //its smaller than 10, lets count how many decimals we need to display
+        byte needdeci = 2;  //lets start with 2
+        float temppr = prevprice;
+        while ((temppr < 10) and (needdeci < 7)) {
+          needdeci++;
+          temppr = temppr * 10;
+        }
+        ld.print(String(prevprice, needdeci), 2); //print needdeci decimal places
       }
-      ld.print(String(prevprice, needdeci), 2); //print needdeci decimal places
     }
-    
-    
-    
-   // Serial.println(F("[Dis] display updated"));
-    // Serial.printf("[Net] RSSI: %d dBm\n", WiFi.RSSI());
-    
-  }
-  if (symidx != prevsymidx) { //symbol changed, display it
-    prevsymidx = symidx;
-    ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 2nd module
+    if (symidx != prevsymidx) { //symbol changed, display it
+      prevsymidx = symidx;
+      ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st module
+    }
+  } else { //nothing subscribed, display message that trying connect
+    if (prevprice != -2) { // send it to display only once, not everytime the loop passes
+      prevprice = -2;
+      ld.print("cnct to ", 1);
+      ld.print("bitfinex", 2);
+    }
   }
 }
 
