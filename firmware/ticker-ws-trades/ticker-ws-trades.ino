@@ -346,7 +346,7 @@ void setup() {
   digitalWrite(LED_BUILTIN, HIGH);
 
   pinMode(0, INPUT_PULLUP);  //button for reset of params
-  ld.clear(ALL_MODULES);
+  //ld.clear(ALL_MODULES);
 
   
   USE_SERIAL.print(F("[Setup] symnum = "));
@@ -405,6 +405,7 @@ void loop() {
   } else { //nothing subscribed, display message that trying connect
     if (prevprice != -2) { // send it to display only once, not everytime the loop passes
       prevprice = -2;
+      prevsymidx = -1;
       ld.print("cnct to ", 1);
       ld.print("bitfinex", 2);
     }
