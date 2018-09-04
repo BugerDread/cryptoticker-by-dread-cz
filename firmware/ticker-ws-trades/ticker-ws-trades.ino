@@ -15,7 +15,7 @@
 #define LED_BLINKMS 1       //led blink duration [ms]
 #define DISP_BRGTH  8      //brightness of the display
 #define DISP_AMOUNT 2       //number of max 7seg modules connected
-#define WS_RECONNECT_INTERVAL 10000  // websocket reconnec interval
+#define WS_RECONNECT_INTERVAL 5000  // websocket reconnec interval
 
 const char REQ1[] PROGMEM = "{\"event\":\"subscribe\",\"channel\":\"trades\",\"symbol\":\"t";
 const char REQ2[] PROGMEM = "\"}";
