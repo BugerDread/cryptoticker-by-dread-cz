@@ -240,7 +240,7 @@ void setup() {
   ld.print("boot v14", 1);
   ld.print("connect ", 2);
 
-  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+//  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
 
   // wifi manager = config save / load
   //read configuration from FS json
