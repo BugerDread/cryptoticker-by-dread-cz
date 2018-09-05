@@ -240,7 +240,7 @@ void setup() {
   ld.print("boot v14", 1);
   ld.print("connect ", 2);
 
-  //WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
 
   // wifi manager = config save / load
   //read configuration from FS json
@@ -368,7 +368,7 @@ void setup() {
   //start the connection
   webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
   webSocket.onEvent(webSocketEvent);
-  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
+//  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
 //  hbticker.attach(HB_TIMEOUT, hbcheck);
 //  USE_SERIAL.print(F("[Setup] started HB check ticker, time: "));
 //  USE_SERIAL.println(HB_TIMEOUT);
@@ -376,7 +376,7 @@ void setup() {
 
 void loop() {
   webSocket.loop();
-  delay (1);   // this is ojeb!!! na vice funkci, dunno why
+//  delay (1);   // this is ojeb!!! na vice funkci, dunno why
   
   if (digitalRead(0) == LOW) {
     Serial.println(F("[Sys] clear settings button pressed"));
@@ -422,7 +422,7 @@ void loop() {
     if (prevprice != -2) { // send it to display only once, not everytime the loop passes
       prevprice = -2;
       prevsymidx = -1;
-      USE_SERIAL.println("showing cnctd");
+      USE_SERIAL.println("showing cnct");
       ld.print("cnct to ", 1);
       ld.print("bitfinex", 2);
     }
