@@ -162,7 +162,7 @@ void parsepl() {
       float tp = 0;
       if (root[1] == "hb") {  //its a heartbeat
         //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
-      } else if ((root[1] == "tu") and (root[2][3] > 0.0)) { //its update
+      } else if ((root[1] == "te") and (root[2][3] > 0.0)) { //trade executed message
         USE_SERIAL.print(F("[Prs] Update, new price: "));
         tp = root[2][3];
         USE_SERIAL.println(tp);
