@@ -53,18 +53,6 @@ int prevsymidx = -1;
 Ticker symticker; //ticker to switch symbols
 Ticker hbticker;
 
-void bla () {
-  int c = 0;
-  
-}
-
-void bla2 () {
-  int c = 0; 
-}
-
-void bla3 () {
-  int c = 0; 
-}
 
 void nextsymidx () {
   //move to next symbol
@@ -120,8 +108,8 @@ void parsepl() {
 //    // USE_SERIAL.println(pays);
 //  }
 
-  //StaticJsonBuffer<512> jsonBuffer;
-  DynamicJsonBuffer jsonBuffer(512);
+  StaticJsonBuffer<512> jsonBuffer;
+  //DynamicJsonBuffer jsonBuffer(512);
   //check if input is array or object
   JsonObject& root = jsonBuffer.parseObject(pays);
   // Test if parsing succeeds.
@@ -376,7 +364,7 @@ void setup() {
 
 void loop() {
   webSocket.loop();
-//  delay (1);   // this is ojeb!!! na vice funkci, dunno why
+ // delay (1);   // this is ojeb!!! na vice funkci, dunno why
   
   if (digitalRead(0) == LOW) {
     Serial.println(F("[Sys] clear settings button pressed"));
