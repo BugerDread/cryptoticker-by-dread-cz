@@ -175,18 +175,19 @@ void parsepl() {
   //blinkled();
 }
 
-//void njiiju() {
-//  bool ok = true;
-//  for (byte i = 0; i < symnum; i++) {
-//    //for all symbols
-//    if (symarray[i].hb != true) {
-//      ok = false;
-//      USE_SERIAL.print(F("[HBC] hb check failed, symbol = "));
-//      USE_SERIAL.println(symarray[i].symbol);
-//    }
-//    symarray[i].hb = false; //clear all HBs
-//  }
-//}
+void hbcheck() {
+  bool ok = true;
+  for (byte i = 0; i < symnum; i++) {
+    //for all symbols
+    if (symarray[i].hb != true) {
+      ok = false;
+      USE_SERIAL.print(F("[HBC] hb check failed, symbol = "));
+      USE_SERIAL.println(symarray[i].symbol);
+    }
+    symarray[i].hb = false; //clear all HBs
+  }
+  if (ok) {USE_SERIAL.println(F("[HBC] hb check OK"));}
+}
 
 void parsesymbols(String s) {
   //lets count symbols and put them into symarray
@@ -211,25 +212,7 @@ void parsesymbols(String s) {
   }
 }
 
-void setup() {
-  // USE_SERIAL.begin(921600);
-  USE_SERIAL.begin(115200);
-
-  // initialize digital pin LED_BUILTIN as an output.
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
-
-  USE_SERIAL.setDebugOutput(true);
-  USE_SERIAL.println(F("[Setup] Boot!"));
-
-  /* init displays and set the brightness min:1, max:15 */
-  ld.init();
-  ld.setBright(DISP_BRGTH, ALL_MODULES);
-  ld.print("boot v14", 1);
-  ld.print("connect ", 2);
-
-//  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
-
+void cfgbywm() {
   // wifi manager = config save / load
   //read configuration from FS json
   Serial.println("mounting FS...");
@@ -329,6 +312,28 @@ void setup() {
     configFile.close();
     //end save
   }
+}
+
+void setup() {
+  // USE_SERIAL.begin(921600);
+  USE_SERIAL.begin(115200);
+
+  // initialize digital pin LED_BUILTIN as an output.
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  USE_SERIAL.setDebugOutput(true);
+  USE_SERIAL.println(F("[Setup] Boot!"));
+
+  /* init displays and set the brightness min:1, max:15 */
+  ld.init();
+  ld.setBright(DISP_BRGTH, ALL_MODULES);
+  ld.print("boot v14", 1);
+  ld.print("connect ", 2);
+
+//  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+  cfgbywm();
+
   long i = String(sbrightness).toInt();
   if (( i >= 0 ) and (i <= 15)) {
     ld.setBright(i - 1, ALL_MODULES);
@@ -357,9 +362,9 @@ void setup() {
   webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
   webSocket.onEvent(webSocketEvent);
 //  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
-//  hbticker.attach(HB_TIMEOUT, hbcheck);
-//  USE_SERIAL.print(F("[Setup] started HB check ticker, time: "));
-//  USE_SERIAL.println(HB_TIMEOUT);
+  hbticker.attach(HB_TIMEOUT, hbcheck);
+  USE_SERIAL.print(F("[Setup] started HB check ticker, time: "));
+  USE_SERIAL.println(HB_TIMEOUT);
 }
 
 void loop() {
