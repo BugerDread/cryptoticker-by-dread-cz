@@ -35,7 +35,7 @@ float prevprice = -1;
 String pays = "";
 
 //flag for saving data
-bool shouldSaveConfig = false;
+bool shouldSaveConfig  = false;
 
 //array for ticker data
 typedef struct  symboldata_t {
@@ -52,6 +52,22 @@ int symidx, subsidx = 0;
 int prevsymidx = -1;
 Ticker symticker; //ticker to switch symbols
 Ticker hbticker;
+Ticker rstticker;
+
+void rstwmcfg() {
+  if (digitalRead(0) == LOW) {  //if still pressed
+    digitalWrite(LED_BUILTIN, LOW);
+    webSocket.disconnect();
+    WiFiManager wifiManager;
+    wifiManager.resetSettings();
+    delay(3000);
+    digitalWrite(LED_BUILTIN, HIGH);
+    ESP.restart();
+  } else {
+    //not pressed anymore
+    rstticker.detach();
+  }
+}
 
 void nextsymidx () {
   //move to next symbol
@@ -385,14 +401,9 @@ void setup() {
 void loop() {
   webSocket.loop();
    
-  if (digitalRead(0) == LOW) {
-    Serial.println(F("[Sys] clear settings button pressed"));
-    digitalWrite(LED_BUILTIN, LOW);
-    WiFiManager wifiManager;
-    wifiManager.resetSettings();
-    delay(2000);
-    digitalWrite(LED_BUILTIN, HIGH);
-    ESP.reset();
+  if ((digitalRead(0) == LOW) and (!rstticker.active())) {
+    Serial.println(F("[Sys] clear settings button pressed, hold it for at least 10 seconds to reset Wifi settings"));
+    rstticker.attach(10, rstwmcfg);
   }
   
   if (pays != "") {
