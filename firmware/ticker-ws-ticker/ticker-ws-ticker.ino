@@ -53,7 +53,6 @@ int prevsymidx = -1;
 Ticker symticker; //ticker to switch symbols
 Ticker hbticker;
 
-
 void nextsymidx () {
   //move to next symbol
   symidx++;
@@ -99,16 +98,8 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   }
 }
 
-void parsepl() {
-  //USE_SERIAL.println(pays);
-//  if (pays.indexOf("],[") != -1) {
-//    //     USE_SERIAL.println(F("[Prs] probably snaphost, lets short&fix it"));
-//    pays = pays.substring(0, pays.indexOf("],["));
-//    pays += "]]]";
-//    // USE_SERIAL.println(pays);
-//  }
-
-  StaticJsonBuffer<512> jsonBuffer;
+bool parseobj() {
+   StaticJsonBuffer<384> jsonBuffer;
   //DynamicJsonBuffer jsonBuffer(512);
   //check if input is array or object
   JsonObject& root = jsonBuffer.parseObject(pays);
@@ -140,43 +131,60 @@ void parsepl() {
         USE_SERIAL.println(F("[Prs] Ticker subscribe failed"));
       }
     }
+    return true;
   } else {
-    JsonArray& root = jsonBuffer.parseArray(pays);
-    // Test if parsing succeeds.
-    if (root.success()) {
-      //   USE_SERIAL.println(F("[Prs] its an array"));
-      float tp = 0.0;
-      bool temphb = false;
-      if (root[1] == "hb") {  //its a heartbeat
-        //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
-        temphb = true;
-      } else if (root[1][6] > 0.0) { // new prize
-        USE_SERIAL.print(F("[Prs] Update, new price: "));
-        tp = root[1][6];
-        USE_SERIAL.println(tp);
-      } 
+    //its not an json obj or its too big
+    return false;
+  }
+}
 
-      //root[0] contains chanid of received message
-      //find the symbol in array and set the prize if we have some prizze
-      if ((tp != 0.0) or (temphb == true)) {  //if we have prize
-        for (byte i = 0; i < subsidx; i++) { //symnum -> subsidx   iterate the array of subscribed
-          if (symarray[i].chanid == root[0]) {  //we found it
-            if (tp != 0.0) {symarray[i].price = tp; }
-            if (temphb == true) {symarray[i].hb = true; }
-            // USE_SERIAL.print(F("[Prs] array updated, i = "));
-            // USE_SERIAL.println(i);
-            break;
-          }
+bool parsearr() {
+  StaticJsonBuffer<384> jsonBuffer;
+  //DynamicJsonBuffer jsonBuffer(512);
+ JsonArray& root = jsonBuffer.parseArray(pays);
+  // Test if parsing succeeds.
+  if (root.success()) {
+    //   USE_SERIAL.println(F("[Prs] its an array"));
+    float tp = 0.0;
+    bool temphb = false;
+    if (root[1] == "hb") {  //its a heartbeat
+      //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
+      temphb = true;
+    } else if (root[1][6] > 0.0) { // new prize
+      USE_SERIAL.print(F("[Prs] Update, new price: "));
+      tp = root[1][6];
+      USE_SERIAL.println(tp);
+    } 
+
+    //root[0] contains chanid of received message
+    //find the symbol in array and set the prize if we have some prizze
+    if ((tp != 0.0) or (temphb == true)) {  //if we have prize
+      for (byte i = 0; i < subsidx; i++) { //symnum -> subsidx   iterate the array of subscribed
+        if (symarray[i].chanid == root[0]) {  //we found it
+          if (tp != 0.0) {symarray[i].price = tp; }
+          if (temphb == true) {symarray[i].hb = true; }
+          // USE_SERIAL.print(F("[Prs] array updated, i = "));
+          // USE_SERIAL.println(i);
+          break;
         }
       }
     }
+  return true;
+  } else {
+    //its not array or its too big
+    return false;
+  }
+}
+
+void parsepl() {
+  if (!parsearr()) {
+    parseobj();
   }
   pays = "";
-  //blinkled();
 }
 
 void hbcheck() {
-  bool ok = true;
+  bool ok = true; //false for testing only
   for (byte i = 0; i < symnum; i++) {
     //for all symbols
     if (symarray[i].hb != true) {
@@ -186,7 +194,14 @@ void hbcheck() {
     }
     symarray[i].hb = false; //clear all HBs
   }
-  if (ok) {USE_SERIAL.println(F("[HBC] hb check OK"));}
+  if (ok) {USE_SERIAL.println(F("[HBC] hb check OK"));} else {
+    //hbcheck failed
+    USE_SERIAL.println(F("[HBC] hb check FAILED, reconnecting websocket"));
+    webSocket.disconnect();
+    subsidx = 0;  //no symbols subscribed
+    delay(1000);
+    webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
+  }
 }
 
 void parsesymbols(String s) {
@@ -369,8 +384,7 @@ void setup() {
 
 void loop() {
   webSocket.loop();
- // delay (1);   // this is ojeb!!! na vice funkci, dunno why
-  
+   
   if (digitalRead(0) == LOW) {
     Serial.println(F("[Sys] clear settings button pressed"));
     digitalWrite(LED_BUILTIN, LOW);
