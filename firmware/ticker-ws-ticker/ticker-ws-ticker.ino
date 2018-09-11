@@ -54,15 +54,12 @@ Ticker symticker; //ticker to switch symbols
 Ticker hbticker;
 Ticker rstticker;
 
+bool clrflag = false;
+
 void rstwmcfg() {
   if (digitalRead(0) == LOW) {  //if still pressed
-    digitalWrite(LED_BUILTIN, LOW);
-    webSocket.disconnect();
-    WiFiManager wifiManager;
-    wifiManager.resetSettings();
-    delay(3000);
-    digitalWrite(LED_BUILTIN, HIGH);
-    ESP.restart();
+    clrflag = true;
+    
   } else {
     //not pressed anymore
     rstticker.detach();
@@ -366,7 +363,7 @@ void setup() {
   cfgbywm();
 
   long i = String(sbrightness).toInt();
-  if (( i >= 0 ) and (i <= 15)) {
+  if (( i >= 1 ) and (i <= 16)) {
     ld.setBright(i - 1, ALL_MODULES);
     Serial.print("Setting display brightness to: ");
     Serial.println(i);
@@ -409,6 +406,17 @@ void loop() {
   if (pays != "") {
     parsepl();
     USE_SERIAL.println("parsing");
+  }
+
+  if (clrflag) {
+    digitalWrite(LED_BUILTIN, LOW);
+    webSocket.disconnect();
+    WiFi.disconnect();
+    //WiFiManager wifiManager;
+    //wifiManager.resetSettings();
+    delay(3000);
+    digitalWrite(LED_BUILTIN, HIGH);
+    ESP.restart();
   }
 
   //display prizze
