@@ -20,22 +20,23 @@
 
 const char REQ1[] PROGMEM = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
 const char REQ2[] PROGMEM = "\"}";
+const char APISRV[] PROGMEM = "api.bitfinex.com";
+const char APIURL[] PROGMEM = "/ws/2";
+#define APIPORT 443
 
 //define your default values here, if there are different values in config.json, they are overwritten.
 char symbol[66] = "BTCUSD";
 char sbrightness[4] = "8";
 char symtime[4] = "3";
-
-// ESP8266WiFiMulti WiFiMulti;
-WebSocketsClient webSocket;
-BgrMax7seg ld = BgrMax7seg(SPI_SPEED, SPI_CSPIN, DISP_AMOUNT); //init display
-// word chid = 0; //ws channel id
 float price = -1;
 float prevprice = -1;
 String pays = "";
-
-//flag for saving data
-bool shouldSaveConfig  = false;
+bool clrflag = false;
+bool shouldSaveConfig  = false; //flag for saving data
+bool reconnflag = false;
+int symidx, subsidx = 0;
+int prevsymidx = -1;
+int symnum = 0;
 
 //array for ticker data
 typedef struct  symboldata_t {
@@ -44,30 +45,23 @@ typedef struct  symboldata_t {
   float price;
   bool hb;
 };
-
-int symnum = 0;
 symboldata_t symarray[16];
 
-int symidx, subsidx = 0;
-int prevsymidx = -1;
 Ticker symticker; //ticker to switch symbols
 Ticker hbticker;
 Ticker rstticker;
-
-bool clrflag = false;
+WebSocketsClient webSocket;
+BgrMax7seg ld = BgrMax7seg(SPI_SPEED, SPI_CSPIN, DISP_AMOUNT); //init display
 
 void rstwmcfg() {
   if (digitalRead(0) == LOW) {  //if still pressed
     clrflag = true;
-    
-  } else {
-    //not pressed anymore
+  } else {                      //not pressed anymore
     rstticker.detach();
   }
 }
 
-void nextsymidx () {
-  //move to next symbol
+void nextsymidx () {            //move to next symbol
   symidx++;
   if (symidx >= subsidx) {
     symidx = 0;
@@ -113,7 +107,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
 bool parseobj() {
    StaticJsonBuffer<384> jsonBuffer;
-  //DynamicJsonBuffer jsonBuffer(512);
   //check if input is array or object
   JsonObject& root = jsonBuffer.parseObject(pays);
   // Test if parsing succeeds.
@@ -145,16 +138,14 @@ bool parseobj() {
       }
     }
     return true;
-  } else {
-    //its not an json obj or its too big
+  } else {                //its not an json obj or its too big
     return false;
   }
 }
 
 bool parsearr() {
   StaticJsonBuffer<384> jsonBuffer;
-  //DynamicJsonBuffer jsonBuffer(512);
- JsonArray& root = jsonBuffer.parseArray(pays);
+  JsonArray& root = jsonBuffer.parseArray(pays);
   // Test if parsing succeeds.
   if (root.success()) {
     //   USE_SERIAL.println(F("[Prs] its an array"));
@@ -183,8 +174,7 @@ bool parsearr() {
       }
     }
   return true;
-  } else {
-    //its not array or its too big
+  } else {      //its not array or its too big
     return false;
   }
 }
@@ -197,9 +187,8 @@ void parsepl() {
 }
 
 void hbcheck() {
-  bool ok = true; //false for testing only
-  for (byte i = 0; i < symnum; i++) {
-    //for all symbols
+  bool ok = true; // false; // for testing only
+  for (byte i = 0; i < symnum; i++) {   //for all symbols
     if (symarray[i].hb != true) {
       ok = false;
       USE_SERIAL.print(F("[HBC] hb check failed, symbol = "));
@@ -209,11 +198,8 @@ void hbcheck() {
   }
   if (ok) {USE_SERIAL.println(F("[HBC] hb check OK"));} else {
     //hbcheck failed
-    USE_SERIAL.println(F("[HBC] hb check FAILED, reconnecting websocket"));
-    webSocket.disconnect();
-    subsidx = 0;  //no symbols subscribed
-    delay(1000);
-    webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
+    USE_SERIAL.println(F("[HBC] hb check FAILED, reconnect websocket"));
+    reconnflag = true;  //set the flag, will do the reconnect in main loop
   }
 }
 
@@ -243,16 +229,16 @@ void parsesymbols(String s) {
 void cfgbywm() {
   // wifi manager = config save / load
   //read configuration from FS json
-  Serial.println("mounting FS...");
+  Serial.println(F("mounting FS..."));
 
   if (SPIFFS.begin()) {
-    Serial.println("mounted file system");
+    Serial.println(F("mounted file system"));
     if (SPIFFS.exists("/config.json")) {
       //file exists, reading and loading
-      Serial.println("reading config file");
+      Serial.println(F("reading config file"));
       File configFile = SPIFFS.open("/config.json", "r");
       if (configFile) {
-        Serial.println("opened config file");
+        Serial.println(F("opened config file"));
         size_t size = configFile.size();
         // Allocate a buffer to store contents of the file.
         std::unique_ptr<char[]> buf(new char[size]);
@@ -261,18 +247,18 @@ void cfgbywm() {
         JsonObject& json = jsonBuffer.parseObject(buf.get());
         json.printTo(Serial);
         if (json.success()) {
-          Serial.println("\nparsed json");
+          Serial.println(F("\nparsed json"));
           strcpy(symbol, json["symbol"]);
           strcpy(sbrightness, json["sbrightness"]);
           strcpy(symtime, json["symtime"]);
         } else {
-          Serial.println("failed to load json config");
+          Serial.println(F("failed to load json config"));
         }
         configFile.close();
       }
     }
   } else {
-    Serial.println("failed to mount FS");
+    Serial.println(F("failed to mount FS"));
   }
   //end read
 
@@ -293,13 +279,13 @@ void cfgbywm() {
   //wifiManager.setMinimumSignalQuality();                //set minimu quality of signal so it ignores AP's under that quality, defaults to 8%
   //wifiManager.setTimeout(120);                          //sets timeout until configuration portal gets turned off useful to make it all retry or go to sleep in seconds
   if (!wifiManager.autoConnect("Bgr ticker", "btcbtcbtc")) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
-    Serial.println("failed to connect and hit timeout");
+    Serial.println(F("failed to connect and hit timeout"));
     delay(1000);
     digitalWrite(LED_BUILTIN, HIGH);
     ESP.reset();                                          //reset and try again, or maybe put it to deep sleep
   }
 
-  Serial.println("WiFi connected...yeey :)");             //if you get here you have connected to the WiFi
+  Serial.println(F("WiFi connected...yeey :)"));             //if you get here you have connected to the WiFi
 
   ld.print("  wifi  ", 1);
   ld.print(" online ", 2);
@@ -323,7 +309,7 @@ void cfgbywm() {
 
   //save the custom parameters to FS
   if (shouldSaveConfig) {
-    Serial.println("saving config");
+    Serial.println(F("saving config"));
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
     String upsym = symbol;
@@ -333,7 +319,7 @@ void cfgbywm() {
     json["symtime"] = symtime;
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
-      Serial.println("failed to open config file for writing");
+      Serial.println(F("failed to open config file for writing"));
     }
     json.printTo(Serial);
     json.printTo(configFile);
@@ -365,11 +351,11 @@ void setup() {
   long i = String(sbrightness).toInt();
   if (( i >= 1 ) and (i <= 16)) {
     ld.setBright(i - 1, ALL_MODULES);
-    Serial.print("Setting display brightness to: ");
+    Serial.print(F("Setting display brightness to: "));
     Serial.println(i);
   }
 
-  Serial.println("local ip");
+  Serial.println(F("local ip"));
   Serial.println(WiFi.localIP());
 
   digitalWrite(LED_BUILTIN, HIGH);
@@ -387,7 +373,7 @@ void setup() {
   USE_SERIAL.println(String(symtime).toInt());
 
   //start the connection
-  webSocket.beginSSL("api.bitfinex.com", 443, "/ws/2");
+  webSocket.beginSSL(FPSTR(APISRV), APIPORT, FPSTR(APIURL));
   webSocket.onEvent(webSocketEvent);
 //  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
   hbticker.attach(HB_TIMEOUT, hbcheck);
@@ -405,11 +391,13 @@ void loop() {
   
   if (pays != "") {
     parsepl();
-    USE_SERIAL.println("parsing");
+  //  USE_SERIAL.println(F("parsing"));
   }
 
   if (clrflag) {
     digitalWrite(LED_BUILTIN, LOW);
+    ld.print("reconfig", 1);
+    ld.print(" button ", 2);
     webSocket.disconnect();
     WiFi.disconnect();
     //WiFiManager wifiManager;
@@ -419,10 +407,18 @@ void loop() {
     ESP.restart();
   }
 
+  if (reconnflag) {
+    reconnflag = false;
+    webSocket.disconnect();
+    subsidx = 0;  //no symbols subscribed
+    delay(1000);
+    webSocket.beginSSL(FPSTR(APISRV), APIPORT, FPSTR(APIURL));
+  }
+
   //display prizze
   if (subsidx > 0) {  //if there is sth subscribed
     if (symarray[symidx].price != prevprice) {
-      USE_SERIAL.println("showing price");
+      USE_SERIAL.println(F("[LED] showing price"));
       prevprice = symarray[symidx].price;
       if (prevprice >= 1000000) {
         ld.print(String(prevprice, 0), 2); //print no decimal places
@@ -440,7 +436,7 @@ void loop() {
       }
     }
     if (symidx != prevsymidx) { //symbol changed, display it
-      USE_SERIAL.println("showing symbol");
+      USE_SERIAL.println(F("[LED] showing symbol"));
       prevsymidx = symidx;
       ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st module
     }
@@ -448,7 +444,7 @@ void loop() {
     if (prevprice != -2) { // send it to display only once, not everytime the loop passes
       prevprice = -2;
       prevsymidx = -1;
-      USE_SERIAL.println("showing cnct");
+      USE_SERIAL.println(F("[LED] showing cnct"));
       ld.print("cnct to ", 1);
       ld.print("bitfinex", 2);
     }
