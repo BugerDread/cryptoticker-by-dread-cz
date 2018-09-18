@@ -9,14 +9,14 @@
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
 // configuration
-#define SPI_SPEED   8000000 //SPI@8MHZ
-#define SPI_CSPIN   5       //SPI CS=GPIO5
-#define USE_SERIAL  Serial
-#define LED_BLINKMS 1       //led blink duration [ms]
-#define DISP_BRGTH  8      //brightness of the display
-#define DISP_AMOUNT 2       //number of max 7seg modules connected
-#define WS_RECONNECT_INTERVAL 5000  // websocket reconnec interval
-#define HB_TIMEOUT  30    //heartbeat interval in seconds
+#define SPI_SPEED             8000000 //SPI@8MHZ
+#define SPI_CSPIN             5       //SPI CS=GPIO5
+#define USE_SERIAL            Serial
+#define DISP_BRGTH            8       //brightness of the display
+#define DISP_AMOUNT           2       //number of max 7seg modules connected
+#define WS_RECONNECT_INTERVAL 5000    // websocket reconnec interval
+#define HB_TIMEOUT            30      //heartbeat interval in seconds
+#define CFGPORTAL_TIMEOUT     120     //timeout for config portal in seconds
 
 const char REQ1[] PROGMEM = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
 const char REQ2[] PROGMEM = "\"}";
@@ -262,6 +262,8 @@ void cfgbywm() {
   }
   //end read
 
+  WiFiManager wifiManager;                                //Local intialization. Once its business is done, there is no need to keep it around
+
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
@@ -269,7 +271,6 @@ void cfgbywm() {
   WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [1 - 16]", sbrightness, 2);
   WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", symtime, 3);
 
-  WiFiManager wifiManager;                                //Local intialization. Once its business is done, there is no need to keep it around
   wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
   wifiManager.setAPCallback(configModeCallback);          //flash led if in config mode
   //add all your parameters here
@@ -277,11 +278,11 @@ void cfgbywm() {
   wifiManager.addParameter(&custom_sbrightness);
   wifiManager.addParameter(&custom_symtime);
   //wifiManager.setMinimumSignalQuality();                //set minimu quality of signal so it ignores AP's under that quality, defaults to 8%
-  //wifiManager.setTimeout(120);                          //sets timeout until configuration portal gets turned off useful to make it all retry or go to sleep in seconds
+  wifiManager.setTimeout(CFGPORTAL_TIMEOUT);                          //sets timeout until configuration portal gets turned off useful to make it all retry or go to sleep in seconds
   if (!wifiManager.autoConnect("Bgr ticker", "btcbtcbtc")) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
-    Serial.println(F("failed to connect and hit timeout"));
-    delay(1000);
-    digitalWrite(LED_BUILTIN, HIGH);
+    Serial.println(F("Config portal timeout, trying to connect again"));
+    //delay(1000);
+    //digitalWrite(LED_BUILTIN, HIGH);
     ESP.reset();                                          //reset and try again, or maybe put it to deep sleep
   }
 
@@ -292,15 +293,18 @@ void cfgbywm() {
 
   parsesymbols(String(custom_symbol.getValue()));
 
-  while (((String(custom_sbrightness.getValue()).toInt()) <= 0) or ((String(custom_sbrightness.getValue()).toInt()) > 16) or
+  if  (((String(custom_sbrightness.getValue()).toInt()) <= 0) or ((String(custom_sbrightness.getValue()).toInt()) > 16) or
          ((String(custom_symtime.getValue()).toInt()) <= 0) or ((String(custom_symtime.getValue()).toInt()) > 999) or 
          (symnum == 0))
   {
     Serial.println(F("Parametters out of range, restart config portal"));
-    ld.print("wifi ok ", 1);
-    ld.print("cfg err ", 2);
-    wifiManager.startConfigPortal("Bgr ticker", "btcbtcbtc");
-    parsesymbols(String(custom_symbol.getValue()));
+    WiFi.disconnect();
+    //ld.print("wifi ok ", 1);
+    //ld.print("cfg err ", 2);
+    //delay(3000);
+    //wifiManager.startConfigPortal("Bgr ticker", "btcbtcbtc");
+    //parsesymbols(String(custom_symbol.getValue()));
+    ESP.reset(); 
   }
 
   strcpy(symbol, custom_symbol.getValue());               //read updated parameters
@@ -375,7 +379,7 @@ void setup() {
   //start the connection
   webSocket.beginSSL(FPSTR(APISRV), APIPORT, FPSTR(APIURL));
   webSocket.onEvent(webSocketEvent);
-//  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
+  webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
   hbticker.attach(HB_TIMEOUT, hbcheck);
   USE_SERIAL.print(F("[Setup] started HB check ticker, time: "));
   USE_SERIAL.println(HB_TIMEOUT);
@@ -413,6 +417,7 @@ void loop() {
     subsidx = 0;  //no symbols subscribed
     delay(1000);
     webSocket.beginSSL(FPSTR(APISRV), APIPORT, FPSTR(APIURL));
+    webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
   }
 
   //display prizze

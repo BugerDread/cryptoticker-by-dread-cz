@@ -1,0 +1,2 @@
+cp2102 drivers https://www.silabs.com/products/development-tools/software/usb-to-uart-bridge-vcp-drivers
+pyflasher 2.2 https://github.com/marcelstoer/nodemcu-pyflasher/releases/tag/v2.2
