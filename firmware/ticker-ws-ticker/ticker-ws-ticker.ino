@@ -346,8 +346,8 @@ void setup() {
   /* init displays and set the brightness min:1, max:15 */
   ld.init();
   ld.setBright(DISP_BRGTH, ALL_MODULES);
-  ld.print("boot v14", 1);
-  ld.print("connect ", 2);
+  ld.print("dread.cz ", 1);
+  ld.print(" ticker ", 2);
 
 //  WiFi.setPhyMode(WIFI_PHY_MODE_11G);
   cfgbywm();
