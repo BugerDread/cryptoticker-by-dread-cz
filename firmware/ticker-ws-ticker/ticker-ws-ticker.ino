@@ -29,11 +29,12 @@ char symbol[66] = "BTCUSD";
 char sbrightness[4] = "8";
 char symtime[4] = "3";
 float price = -1;
-float prevprice = -1;
+float prevval = -1;
 String pays = "";
 bool clrflag = false;
 bool shouldSaveConfig  = false; //flag for saving data
 bool reconnflag = false;
+bool dispchng = false;
 int symidx, subsidx = 0;
 int prevsymidx = -1;
 int symnum = 0;
@@ -43,6 +44,7 @@ typedef struct  symboldata_t {
   String symbol;
   long chanid;
   float price;
+  float change;
   bool hb;
 };
 symboldata_t symarray[16];
@@ -61,10 +63,17 @@ void rstwmcfg() {
   }
 }
 
-void nextsymidx () {            //move to next symbol
-  symidx++;
-  if (symidx >= subsidx) {
-    symidx = 0;
+void nextsymidx () {
+  if (prevval != 200) {prevval = -201;} //force redraw if not in connecting mode
+  if (dispchng == false) {
+    dispchng = true;  //will display daily change
+  } else {
+    //move to next symbol
+    dispchng = false;
+    symidx++;
+    if (symidx >= subsidx) {
+      symidx = 0;
+    }
   }
 }
 
@@ -149,23 +158,33 @@ bool parsearr() {
   // Test if parsing succeeds.
   if (root.success()) {
     //   USE_SERIAL.println(F("[Prs] its an array"));
-    float tp = 0.0;
+    //float tp = 0.0;
+    bool newdata = false;
     bool temphb = false;
     if (root[1] == "hb") {  //its a heartbeat
       //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
       temphb = true;
     } else if (root[1][6] > 0.0) { // new prize
-      USE_SERIAL.print(F("[Prs] Update, new price: "));
-      tp = root[1][6];
-      USE_SERIAL.println(tp);
+      newdata = true;
+      USE_SERIAL.print(F("[Prs] Update, price: "));
+      //tp = root[1][6];
+      USE_SERIAL.print((float)root[1][6]);
+      USE_SERIAL.print(F(", change: "));
+      USE_SERIAL.println(100*(float)root[1][5]);
     } 
 
-    //root[0] contains chanid of received message
+    //root[0] contains chanid of received message, root[1][5] daily change in %, etc...
+    //[CHANNEL_ID,[BID,BID_SIZE,ASK,ASK_SIZE,DAILY_CHANGE,DAILY_CHANGE_PERC,LAST_PRICE,VOLUME,HIGH,LOW]]
+    
     //find the symbol in array and set the prize if we have some prizze
-    if ((tp != 0.0) or (temphb == true)) {  //if we have prize
+    if ((newdata == true) or (temphb == true)) {  //if we have prize or hb
       for (byte i = 0; i < subsidx; i++) { //symnum -> subsidx   iterate the array of subscribed
         if (symarray[i].chanid == root[0]) {  //we found it
-          if (tp != 0.0) {symarray[i].price = tp; }
+          if (newdata == true) {
+            symarray[i].price = root[1][6]; 
+            symarray[i].change = root[1][5];
+            symarray[i].change *= 100;
+            }
           if (temphb == true) {symarray[i].hb = true; }
           // USE_SERIAL.print(F("[Prs] array updated, i = "));
           // USE_SERIAL.println(i);
@@ -422,32 +441,43 @@ void loop() {
 
   //display prizze
   if (subsidx > 0) {  //if there is sth subscribed
-    if (symarray[symidx].price != prevprice) {
-      USE_SERIAL.println(F("[LED] showing price"));
-      prevprice = symarray[symidx].price;
-      if (prevprice >= 1000000) {
-        ld.print(String(prevprice, 0), 2); //print no decimal places
-      } else if (prevprice >= 10) {
-        ld.print(String(prevprice, 2), 2); //print 2 decimal places
+    if (dispchng == true) {
+      if (prevval != symarray[symidx].change) {
+        prevval = symarray[symidx].change;
+       // USE_SERIAL.println(F("[LED] showing change"));
+        String temp = String(symarray[symidx].change, 1);
+        while (temp.length() < 7) {
+          temp = " " + temp;
+        }
+        temp = "CH" + temp;
+        ld.print(temp, 2);
+      }
+    } else if (symarray[symidx].price != prevval) {
+    //  USE_SERIAL.println(F("[LED] showing price"));
+      prevval = symarray[symidx].price;
+      if (prevval >= 1000000) {
+        ld.print(String(prevval, 0), 2); //print no decimal places
+      } else if (prevval >= 10) {
+        ld.print(String(prevval, 2), 2); //print 2 decimal places
       } else {
         //its smaller than 10, lets count how many decimals we need to display
         byte needdeci = 2;  //lets start with 2
-        float temppr = prevprice;
+        float temppr = prevval;
         while ((temppr < 10) and (needdeci < 7)) {
           needdeci++;
           temppr = temppr * 10;
         }
-        ld.print(String(prevprice, needdeci), 2); //print needdeci decimal places
+        ld.print(String(prevval, needdeci), 2); //print needdeci decimal places
       }
     }
     if (symidx != prevsymidx) { //symbol changed, display it
-      USE_SERIAL.println(F("[LED] showing symbol"));
+   //   USE_SERIAL.println(F("[LED] showing symbol"));
       prevsymidx = symidx;
       ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st module
     }
   } else { //nothing subscribed, display message that trying connect
-    if (prevprice != -2) { // send it to display only once, not everytime the loop passes
-      prevprice = -2;
+    if (prevval != -200) { // send it to display only once, not everytime the loop passes
+      prevval = -200;
       prevsymidx = -1;
       USE_SERIAL.println(F("[LED] showing cnct"));
       ld.print("cnct to ", 1);
