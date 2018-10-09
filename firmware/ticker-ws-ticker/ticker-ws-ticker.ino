@@ -18,6 +18,7 @@
 #define HB_TIMEOUT            30      //heartbeat interval in seconds
 #define CFGPORTAL_TIMEOUT     120     //timeout for config portal in seconds
 
+const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 const char REQ1[] PROGMEM = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
 const char REQ2[] PROGMEM = "\"}";
 const char APISRV[] PROGMEM = "api.bitfinex.com";
@@ -359,8 +360,10 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  USE_SERIAL.setDebugOutput(true);
+  //USE_SERIAL.setDebugOutput(true);
   USE_SERIAL.println(F("[Setup] Boot!"));
+  USE_SERIAL.print(F("Compile date: "));
+  USE_SERIAL.println(FPSTR(COMPILE_DATE));
 
   /* init displays and set the brightness min:1, max:15 */
   ld.init();
@@ -485,5 +488,3 @@ void loop() {
     }
   }
 }
-
-
