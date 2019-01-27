@@ -48,6 +48,12 @@ typedef struct  symboldata_t {
   float change;
   bool hb;
 };
+
+//state of the ticker
+typedef enum {
+  discnctd, cnctd, subscribed
+} state;
+
 symboldata_t symarray[16];
 
 Ticker symticker; //ticker to switch symbols
