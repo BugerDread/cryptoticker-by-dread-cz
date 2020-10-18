@@ -10,7 +10,6 @@
 #include <WebSocketsClient.h>     //https://github.com/Links2004/arduinoWebSockets   
 
 // configuration
-#define USE_SERIAL Serial
 const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
 const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
@@ -100,24 +99,24 @@ void saveConfigCallback () {
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch (type) {
     case WStype_DISCONNECTED: {
-        USE_SERIAL.println("[WSc] Disconnected!");
+        Serial.println("[WSc] Disconnected!");
         subsidx = 0;  //no symbols subscribed
       }
       break;
     case WStype_CONNECTED: {
-        USE_SERIAL.print("[WSc] Connected to url: ");
-        USE_SERIAL.println((char*)payload);
+        Serial.print("[WSc] Connected to url: ");
+        Serial.println((char*)payload);
       }
       break;
     case WStype_TEXT: {
-        USE_SERIAL.print("[WSc] data: ");
-        USE_SERIAL.println((char*)payload);
+        Serial.print("[WSc] data: ");
+        Serial.println((char*)payload);
         pays = (char*)payload;
       }
       break;
     case WStype_BIN: {
-        USE_SERIAL.print("[WSc] get binary length: ");
-        USE_SERIAL.println(length);
+        Serial.print("[WSc] get binary length: ");
+        Serial.println(length);
       }
       break;
   }
@@ -129,20 +128,20 @@ bool parsepl() {
   pays = "";
   // Test if parsing succeeds.
   if (!error) {
-    //   USE_SERIAL.println(F("[Prs] its an array"));
+    //   Serial.println(F("[Prs] its an array"));
     //float tp = 0.0;
     bool newdata = false;
     bool temphb = false;
     if (jdoc[1] == "hb") {  //its a heartbeat
-      //  USE_SERIAL.println(F("[Prs] Heartbeat!"));
+      //  Serial.println(F("[Prs] Heartbeat!"));
       temphb = true;
     } else if (jdoc[1][6] != nullptr) { // new prize
       newdata = true;
-      USE_SERIAL.print("[Prs] Update, price: ");
+      Serial.print("[Prs] Update, price: ");
       //tp = root[1][6];
-      USE_SERIAL.print((float)jdoc[1][6]);
-      USE_SERIAL.print(", change: ");
-      USE_SERIAL.println(100*(float)jdoc[1][5]);
+      Serial.print((float)jdoc[1][6]);
+      Serial.print(", change: ");
+      Serial.println(100*(float)jdoc[1][5]);
     } 
 
     //[CHANNEL_ID,[BID,BID_SIZE,ASK,ASK_SIZE,DAILY_CHANGE,DAILY_CHANGE_PERC,LAST_PRICE,VOLUME,HIGH,LOW]]
@@ -158,8 +157,8 @@ bool parsepl() {
             }
           //if (temphb == true) 
           symarray[i].hb = true; 
-          // USE_SERIAL.print(F("[Prs] array updated, i = "));
-          // USE_SERIAL.println(i);
+          // Serial.print(F("[Prs] array updated, i = "));
+          // Serial.println(i);
           break;
         }
       }
@@ -167,24 +166,23 @@ bool parsepl() {
     } else {
       // its not HB or price update
       // check if its a subscribe event info
-        //   USE_SERIAL.println(F("[Prs] its json object"));
       if (jdoc["event"] == "info") {
         if (subsidx == 0) {
-          USE_SERIAL.println("[Prs] Got info, lets subscribe 1st ticker symbol: " + symarray[subsidx].symbol);
+          Serial.println("[Prs] Got info, lets subscribe 1st ticker symbol: " + symarray[subsidx].symbol);
             webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
         }
       } else if (jdoc["event"] == "subscribed")  {
         if (jdoc["chanId"] != false) {
           symarray[subsidx].chanid = jdoc["chanId"];
-          USE_SERIAL.print("[Prs] Ticker subscribe success, channel id: ");
-          USE_SERIAL.println(symarray[subsidx].chanid);
+          Serial.print("[Prs] Ticker subscribe success, channel id: ");
+          Serial.println(symarray[subsidx].chanid);
           subsidx++;  //move to next symbol in array
           if (subsidx < symnum) { //subscribe next
-            USE_SERIAL.print("[Prs] Lets subscribe next ticker symbol: ");
+            Serial.print("[Prs] Lets subscribe next ticker symbol: ");
               webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
           }
         } else {
-          USE_SERIAL.println("[Prs] Ticker subscribe failed");
+          Serial.println("[Prs] Ticker subscribe failed");
         }
       }
       return true;
@@ -199,14 +197,14 @@ void hbcheck() {
   for (byte i = 0; i < symnum; i++) {   //for all symbols
     if (symarray[i].hb != true) {
       ok = false;
-      USE_SERIAL.print("[HBC] hb check failed, symbol = ");
-      USE_SERIAL.println(symarray[i].symbol);
+      Serial.print("[HBC] hb check failed, symbol = ");
+      Serial.println(symarray[i].symbol);
     }
     symarray[i].hb = false; //clear all HBs
   }
-  if (ok) {USE_SERIAL.println("[HBC] hb check OK");} else {
+  if (ok) {Serial.println("[HBC] hb check OK");} else {
     //hbcheck failed
-    USE_SERIAL.println("[HBC] hb check FAILED, reconnect websocket");
+    Serial.println("[HBC] hb check FAILED, reconnect websocket");
     reconnflag = true;  //set the flag, will do the reconnect in main loop
   }
 }
@@ -219,12 +217,12 @@ void parsesymbols(String s) {
   while ((pos != -1) and (symnum <= 16) and (s.length() > 0)) {
     pos = s.indexOf(' ', last);
     if (pos == -1) { //last symbol
-      USE_SERIAL.print("[Setup] last symbol: ");
-      USE_SERIAL.println(s.substring(last));
+      Serial.print("[Setup] last symbol: ");
+      Serial.println(s.substring(last));
       symarray[symnum].symbol = s.substring(last);
     } else {
-      USE_SERIAL.print("[Setup] add symbol: ");
-      USE_SERIAL.println(s.substring(last, pos));
+      Serial.print("[Setup] add symbol: ");
+      Serial.println(s.substring(last, pos));
       symarray[symnum].symbol = s.substring(last, pos);
       last = pos + 1;
     }
@@ -335,22 +333,22 @@ void cfgbywm() {
 }
 
 void setup() {
-  USE_SERIAL.begin(115200);
+  Serial.begin(115200);
 
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  //USE_SERIAL.setDebugOutput(true);
-  USE_SERIAL.println(F("[Setup] Boot!"));
-  USE_SERIAL.print(F("Compile date: "));
-  USE_SERIAL.println(FPSTR(COMPILE_DATE));
+  //Serial.setDebugOutput(true);
+  Serial.println(F("[Setup] Boot!"));
+  Serial.print(F("Compile date: "));
+  Serial.println(FPSTR(COMPILE_DATE));
 
   if (WiFi.getMode() != WIFI_STA) {
-    USE_SERIAL.println(F("Set WiFi mode to STA"));
+    Serial.println(F("Set WiFi mode to STA"));
     WiFi.mode(WIFI_STA); // set STA mode, esp defaults to STA+AP
   } else {
-    USE_SERIAL.println(F("WiFi already in STA mode"));
+    Serial.println(F("WiFi already in STA mode"));
   }
 
   /* init displays and set the brightness min:1, max:15 */
@@ -376,20 +374,20 @@ void setup() {
   pinMode(CFG_BUTTON, INPUT_PULLUP);  //button for reset of params
   //ld.clear(ALL_MODULES);
 
-  USE_SERIAL.print("[Setup] symnum = ");
-  USE_SERIAL.println(symnum);
+  Serial.print("[Setup] symnum = ");
+  Serial.println(symnum);
   
   symticker.attach(String(symtime).toInt(), nextsymidx);
-  USE_SERIAL.print("[Setup] symbol cycle time: ");
-  USE_SERIAL.println(String(symtime));
+  Serial.print("[Setup] symbol cycle time: ");
+  Serial.println(String(symtime));
 
   //start the connection
   webSocket.beginSSL(APISRV, APIPORT, APIURL);  //, "#INSECURE#"
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
   hbticker.attach(HB_TIMEOUT, hbcheck);
-  USE_SERIAL.print("[Setup] started HB check ticker, time: ");
-  USE_SERIAL.println(HB_TIMEOUT);
+  Serial.print("[Setup] started HB check ticker, time: ");
+  Serial.println(HB_TIMEOUT);
 }
 
 String temp;
@@ -404,7 +402,7 @@ void loop() {
   
   if (pays != "") {
     parsepl();
-  //  USE_SERIAL.println(F("parsing"));
+  //  Serial.println(F("parsing"));
   }
 
   if (clrflag) {
@@ -434,7 +432,7 @@ void loop() {
     if (dispchng == true) {
       if (prevval != symarray[symidx].change) {
         prevval = symarray[symidx].change;
-       // USE_SERIAL.println(F("[LED] showing change"));
+       // Serial.println(F("[LED] showing change"));
         String temp = String(symarray[symidx].change, 1);
         while (temp.length() < 7) {
           temp = " " + temp;
@@ -443,7 +441,7 @@ void loop() {
         ld.print(temp, 2);
       }
     } else if (symarray[symidx].price != prevval) {
-    //  USE_SERIAL.println(F("[LED] showing price"));
+    //  Serial.println(F("[LED] showing price"));
       prevval = symarray[symidx].price;
       if (prevval >= 1000000) {
         ld.print(String(prevval, 0), 2); //print no decimal places
@@ -461,7 +459,7 @@ void loop() {
       }
     }
     if (symidx != prevsymidx) { //symbol changed, display it
-   //   USE_SERIAL.println(F("[LED] showing symbol"));
+   //   Serial.println(F("[LED] showing symbol"));
       prevsymidx = symidx;
       ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st module
     }
@@ -469,7 +467,7 @@ void loop() {
     if (prevval != -200) { // send it to display only once, not everytime the loop passes
       prevval = -200;
       prevsymidx = -1;
-      USE_SERIAL.println("[LED] showing cnct");
+      Serial.println("[LED] showing cnct");
       ld.print("cnct to ", 1);
       ld.print("bitfinex", 2);
     }
