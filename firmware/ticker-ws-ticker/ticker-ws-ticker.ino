@@ -10,24 +10,27 @@
 #include <WebSocketsClient.h>     //https://github.com/Links2004/arduinoWebSockets   
 
 // configuration
-#define SPI_SPEED             8000000 //SPI@8MHZ
-#define SPI_CSPIN             5       //SPI CS - toto je to co se lisi a je treba se podivat kam je zapojeny
-#define USE_SERIAL            Serial
-#define DISP_BRGTH            8       //brightness of the display
-#define DISP_AMOUNT           2       //number of max 7seg modules connected
-#define WS_RECONNECT_INTERVAL 5000    // websocket reconnec interval
-#define HB_TIMEOUT            30      //heartbeat interval in seconds
-#define CFGPORTAL_TIMEOUT     120     //timeout for config portal in seconds
-#define CFG_BUTTON            0       //0 for default FLASH button on nodeMCU board
-#define CFG_TIME              5       //time [s] to hold CFG_BUTTON to activate cfg portal
-
+#define USE_SERIAL Serial
 const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
+
+const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
+const uint8_t SPI_CSPIN = 5;                  //SPI CS - may vary in older versions
+const uint8_t DISP_BRGTH = 8;                 //brightness of the display
+const uint8_t DISP_AMOUNT = 2;                //number of max 7seg modules connected
+
+const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
+const uint8_t CFG_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
+const uint8_t CFG_TIME = 5;                   //time [s] to hold CFG_BUTTON to activate cfg portal
+
+const char APISRV[] = "api.bitfinex.com";
+const uint16_t APIPORT = 443;
+const char APIURL[] = "/ws/2";
 const char REQ1[] = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
 const char REQ2[] = "\"}";
-const char APISRV[] = "api.bitfinex.com";
-const char APIURL[] = "/ws/2";
+const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
+const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
+
 const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //jargest json
-#define APIPORT 443
 
 //define your default values here, if there are different values in config.json, they are overwritten.
 char symbol[130] = "BTCUSD";
@@ -40,12 +43,9 @@ bool clrflag = false;
 bool shouldSaveConfig  = false; //flag for saving data
 bool reconnflag = false;
 bool dispchng = false;
-bool disptemp = false;
-bool disptimenominus = false;
 int symidx, subsidx = 0;
 int prevsymidx = -1;
 int symnum = 0;
-bool tzoneok = false;   //got valid tz data
 
 //array for ticker data
 struct  symboldata_t {
@@ -56,21 +56,13 @@ struct  symboldata_t {
   bool hb;
 };
 
-//state of the ticker
-//typedef enum {
-//  discnctd, cnctd, subscribed
-//} state;
-
 symboldata_t symarray[16];
 
 Ticker symticker; //ticker to switch symbols
 Ticker hbticker;
 Ticker rstticker;
-//Ticker blinkticker;
-//ESP8266WiFiMulti WiFiMulti;
 WebSocketsClient webSocket;
 BgrMax7seg ld = BgrMax7seg(SPI_SPEED, SPI_CSPIN, DISP_AMOUNT); //init display
-//Timezone myTZ;
 
 void rstwmcfg() {
   if (digitalRead(CFG_BUTTON) == LOW) {  //if still pressed
@@ -87,7 +79,6 @@ void nextsymidx () {
   } else {
     //move to next symbol
     dispchng = false;
-    disptemp = false;
     symidx++;
     if (symidx >= subsidx) {
       symidx = 0;
@@ -179,11 +170,8 @@ bool parsepl() {
         //   USE_SERIAL.println(F("[Prs] its json object"));
       if (jdoc["event"] == "info") {
         if (subsidx == 0) {
-          USE_SERIAL.print("[Prs] Got info, lets subscribe 1st ticker symbol: ");
-          String request = REQ1;
-          request += symarray[subsidx].symbol;
-          request += REQ2;
-          webSocket.sendTXT(request);
+          USE_SERIAL.println("[Prs] Got info, lets subscribe 1st ticker symbol: " + symarray[subsidx].symbol);
+            webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
         }
       } else if (jdoc["event"] == "subscribed")  {
         if (jdoc["chanId"] != false) {
@@ -193,10 +181,7 @@ bool parsepl() {
           subsidx++;  //move to next symbol in array
           if (subsidx < symnum) { //subscribe next
             USE_SERIAL.print("[Prs] Lets subscribe next ticker symbol: ");
-            String request = REQ1;
-            request += symarray[subsidx].symbol;
-            request += REQ2;
-            webSocket.sendTXT(request);
+              webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
           }
         } else {
           USE_SERIAL.println("[Prs] Ticker subscribe failed");
@@ -301,15 +286,13 @@ void cfgbywm() {
   wifiManager.addParameter(&custom_symtime);
   //wifiManager.setMinimumSignalQuality();                //set minimu quality of signal so it ignores AP's under that quality, defaults to 8%
   wifiManager.setTimeout(CFGPORTAL_TIMEOUT);                          //sets timeout until configuration portal gets turned off useful to make it all retry or go to sleep in seconds
+
   if (!wifiManager.autoConnect("Bgr ticker", "btcbtcbtc")) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
     Serial.println(F("Config portal timeout, trying to connect again"));
-    //delay(1000);
-    //digitalWrite(LED_BUILTIN, HIGH);
     ESP.reset();                                          //reset and try again, or maybe put it to deep sleep
   }
 
   Serial.println("WiFi connected...yeey :)");             //if you get here you have connected to the WiFi
-
   ld.print("  wifi  ", 1);
   ld.print(" online ", 2);
 
@@ -319,7 +302,7 @@ void cfgbywm() {
          ((String(custom_symtime.getValue()).toInt()) <= 0) or ((String(custom_symtime.getValue()).toInt()) > 999) or 
          (symnum == 0))
   {
-    Serial.println("Parametters out of range, restart config portal");
+    Serial.println(F("Parametters out of range, restart config portal"));
     WiFi.disconnect();
     ESP.reset(); 
   }

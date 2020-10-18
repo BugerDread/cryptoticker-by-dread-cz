@@ -1,8 +1,8 @@
-arduino ide 1.8.5
-board manager -> http://arduino.esp8266.com/stable/package_esp8266com_index.json
-esp 8266 board v 2.4.2
-libz arduino json 5.13.2
-moje displejova spi knihovna
-websocket by Marcus Sattler 2.1.1
-wifimanager by tzapu https://github.com/tzapu/WiFiManager v0.14
-
+arduino ide
+esp 8266 board = board manager -> http://arduino.esp8266.com/stable/package_esp8266com_index.json
+ 
+libz
+arduino json 
+websocket by Marcus Sattler
+https://github.com/BugerDread/esp8266-hw-spi-max7219-7seg
+wifimanager by tzapu https://github.com/tzapu/WiFiManager
