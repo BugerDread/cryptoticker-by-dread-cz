@@ -232,12 +232,39 @@ void parsesymbols(String s) {
   }
 }
 
+bool initspiffs() {
+  Serial.println(F("[SPIFFS] init started"));
+  
+  SPIFFSConfig cfg;
+  cfg.setAutoFormat(false);   //disable atuformat on spiffs begin so we can detect and display info
+  SPIFFS.setConfig(cfg);
+  
+  if (SPIFFS.begin()) {
+    //SPIFFS ok
+    Serial.println(F("[SPIFFS] ready"));
+    return true;
+  } else {
+    //SPIFFS not ok, try to format it
+    Serial.println(F("[SPIFFS] Formatting file system"));
+    ld.print(F(" please "), 1);
+    ld.print(F("  wait  "), 2);
+    if (SPIFFS.format()) {
+      //SPIFFS format OK
+      Serial.println(F("[SPIFFS] format OK, FS ready"));
+      return true;
+    } else {
+      //SPIFFS format failed
+      Serial.println(F("[SPIFFS] format FAILED"));
+      return false;
+    }
+  }
+}
+
 void cfgbywm() {
   // wifi manager = config save / load
   //read configuration from FS json
-  Serial.println(F("mounting FS..."));
 
-  if (SPIFFS.begin()) {
+  if (initspiffs()) {
     Serial.println(F("mounted file system"));
     if (SPIFFS.exists("/config.json")) {
       //file exists, reading and loading
