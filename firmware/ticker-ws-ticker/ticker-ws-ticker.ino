@@ -357,6 +357,9 @@ void cfgbywm() {
     configFile.close();
     //end save
   }
+
+  SPIFFS.end();
+  Serial.println(F("[SPIFFS] end"));
 }
 
 void setup() {
