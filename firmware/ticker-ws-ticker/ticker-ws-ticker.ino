@@ -1,5 +1,3 @@
-//tools -> VTables -> heap
-
 #include <FS.h>
 #include <esp8266_hw_spi_max7219_7seg.h>  //https://github.com/BugerDread/esp8266-hw-spi-max7219-7seg
 #include <EEPROM.h>
