@@ -20,7 +20,7 @@ Ticker shows the price(s) of chosen cryptocurrencies on Bitfinex. It connects to
 3. Hook up the 2nd display to the output of the 1st one.
 4. Hook up the ESP to the computer, launch Arduino, open the ticker-ws-ticker.ino and upload it to the board.
 5. Wait until the display reads "config 192.168.4.1" (it may take about 15seconds).
-6. Connect to the "Bgr ticker" WiFi network (using phone or computer) and open http://192.168.4.1 in your web browser it if doesnt do so automatically.
+6. Connect to the "Bgr ticker" WiFi network (via phone or computer - password is "btcbtcbtc") and open http://192.168.4.1 in your web browser it if doesnt do so automatically.
 7. Click "Configure WiFi", then fill in (you can also click / tap it in the list above the form) name (SSID) and password for your WiFi (leave password blank for open WiFi).
 8. Fill in list of bitfinex symbols separated by spaces, only trading symbols are supported - [list of symbols](https://api-pub.bitfinex.com/v2/conf/pub:list:pair:exchange)
 9. You can also change brightness of the display (range 1-16) and interval how long is each value shown on the display.
