@@ -8,7 +8,7 @@ Ticker shows the price(s) of chosen cryptocurrencies on Bitfinex. It connects to
 
 ## How to make my own?
 1. You will need:
-* ESP8266 nodemcu board (or simmilar)
+* ESP8266 nodemcu board (or similar)
 * pair of 8-digit LED displays driven by MAX7219
 * Arduino with ESP8266 support installed
 * my MAX7219 HW SPI library - [https://github.com/BugerDread/esp8266-hw-spi-max7219-7seg](https://github.com/BugerDread/esp8266-hw-spi-max7219-7seg)
