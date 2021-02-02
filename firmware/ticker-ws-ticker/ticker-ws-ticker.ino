@@ -11,7 +11,7 @@
 const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
 const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
-const uint8_t SPI_CSPIN = 5;                  //SPI CS - may vary in older versions
+const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
 const uint8_t DISP_BRGTH = 8;                 //brightness of the display
 const uint8_t DISP_AMOUNT = 2;                //number of max 7seg modules connected
 
@@ -472,9 +472,9 @@ void loop() {
     //  Serial.println(F("[LED] showing price"));
       prevval = symarray[symidx].price;
       if (prevval >= 1000000) {
-        ld.print(String(prevval, 0), 2); //print no decimal places
+        ld.print(String(prevval, 0), 1); //print no decimal places
       } else if (prevval >= 10) {
-        ld.print(String(prevval, 2), 2); //print 2 decimal places
+        ld.print(String(prevval, 2), 1); //print 2 decimal places
       } else {
         //its smaller than 10, lets count how many decimals we need to display
         byte needdeci = 2;  //lets start with 2
@@ -483,13 +483,13 @@ void loop() {
           needdeci++;
           temppr = temppr * 10;
         }
-        ld.print(String(prevval, needdeci), 2); //print needdeci decimal places
+        ld.print(String(prevval, needdeci), 1); //print needdeci decimal places
       }
     }
     if (symidx != prevsymidx) { //symbol changed, display it
    //   Serial.println(F("[LED] showing symbol"));
       prevsymidx = symidx;
-      ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st module
+    //  ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st module
     }
   } else { //nothing subscribed, display message that trying connect
     if (prevval != -200) { // send it to display only once, not everytime the loop passes
