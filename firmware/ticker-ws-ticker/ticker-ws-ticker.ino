@@ -466,7 +466,7 @@ void loop() {
           temp = " " + temp;
         }
         temp = "CH" + temp;
-        ld.print(temp, 2);
+      //  ld.print(temp, 2);
       }
     } else if (symarray[symidx].price != prevval) {
     //  Serial.println(F("[LED] showing price"));
