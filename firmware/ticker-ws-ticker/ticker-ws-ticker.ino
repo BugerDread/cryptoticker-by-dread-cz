@@ -14,6 +14,7 @@ const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
 const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
 const uint8_t DISP_BRGTH = 8;                 //brightness of the display
 const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
+const char CONFIG_FILE[] = "config.json";        //file to save confoguration to
 
 const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
 const uint8_t CFG_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
@@ -29,7 +30,7 @@ const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
 const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //jargest json
 
-//define your default values here, if there are different values in config.json, they are overwritten.
+//define your default values here, if there are different values in CONFIG_FILE, they are overwritten.
 char symbol[130] = "BTCUSD";
 char sbrightness[4] = "8";
 char symtime[4] = "3";
@@ -37,7 +38,7 @@ float price = -1;
 float prevval = -1;
 String pays = "";
 bool clrflag = false;
-bool shouldSaveConfig  = false; //flag for  data
+bool shouldSaveConfig  = false; //flag for saving data
 bool reconnflag = false;
 bool dispchng = false;
 int symidx, subsidx = 0;
@@ -274,10 +275,10 @@ void cfgbywm() {
 
   if (initspiffs()) {
     Serial.println(F("mounted file system"));
-    if (SPIFFS.exists("config.json")) {
+    if (SPIFFS.exists(CONFIG_FILE)) {
       //file exists, reading and loading
       Serial.println(F("reading config file"));
-      File configFile = SPIFFS.open("config.json", "r");
+      File configFile = SPIFFS.open(CONFIG_FILE, "r");
       if (configFile) {
         Serial.println(F("opened config file"));
         size_t size = configFile.size();
@@ -356,7 +357,7 @@ void cfgbywm() {
     json["symbol"] = upsym;
     json["sbrightness"] = sbrightness;
     json["symtime"] = symtime;
-    File configFile = SPIFFS.open("config.json", "w");
+    File configFile = SPIFFS.open(CONFIG_FILE, "w");
     if (!configFile) {
       Serial.println(F("failed to open config file for writing"));
     }
