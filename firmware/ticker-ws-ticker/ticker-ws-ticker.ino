@@ -11,9 +11,10 @@
 const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
 const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
-const uint8_t SPI_CSPIN = 5;                  //SPI CS - may vary in older versions
+const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
 const uint8_t DISP_BRGTH = 8;                 //brightness of the display
-const uint8_t DISP_AMOUNT = 2;                //number of max 7seg modules connected
+const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
+const char CONFIG_FILE[] = "config.json";        //file to save confoguration to
 
 const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
 const uint8_t CFG_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
@@ -29,7 +30,7 @@ const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
 const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //jargest json
 
-//define your default values here, if there are different values in config.json, they are overwritten.
+//define your default values here, if there are different values in CONFIG_FILE, they are overwritten.
 char symbol[130] = "BTCUSD";
 char sbrightness[4] = "8";
 char symtime[4] = "3";
@@ -84,8 +85,10 @@ void nextsymidx () {
 }
 
 void configModeCallback(WiFiManager *myWiFiManager) {
-  ld.print(F(" config "), 1);
-  ld.print(F("192.168.4.1"), 2);
+  if (DISP_AMOUNT == 2) {
+    ld.print(F(" config "), 1);
+  }
+  ld.print(F("192.168.4.1"), DISP_AMOUNT);  //show on 1st display if we have only one, show on 2nd if we have two
 }
 
 //callback notifying us of the need to save config
@@ -234,7 +237,7 @@ bool initspiffs() {
   Serial.println(F("[SPIFFS] init started"));
   
   SPIFFSConfig cfg;
-  cfg.setAutoFormat(false);   //disable atuformat on spiffs begin so we can detect and display info
+  cfg.setAutoFormat(false);   //disable autoformat on spiffs begin so we can detect and display info
   SPIFFS.setConfig(cfg);
   
   if (SPIFFS.begin()) {
@@ -244,12 +247,20 @@ bool initspiffs() {
   } else {
     //SPIFFS not ok, try to format it
     Serial.println(F("[SPIFFS] Formatting file system"));
-    ld.print(F(" please "), 1);
-    ld.print(F("  wait  "), 2);
+    ld.print(F("  wait  "), 1);
+    if (DISP_AMOUNT == 2) {
+      ld.print(F(" please "), 2);
+    }
     if (SPIFFS.format()) {
       //SPIFFS format OK
-      Serial.println(F("[SPIFFS] format OK, FS ready"));
-      return true;
+      Serial.println(F("[SPIFFS] format OK"));
+      if (SPIFFS.begin()) {
+        Serial.println(F("[SPIFFS] ready"));
+        return true;
+      } else {
+        Serial.println(F("[SPIFFS] mount after format failed"));
+        return false;
+      }
     } else {
       //SPIFFS format failed
       Serial.println(F("[SPIFFS] format FAILED"));
@@ -264,10 +275,10 @@ void cfgbywm() {
 
   if (initspiffs()) {
     Serial.println(F("mounted file system"));
-    if (SPIFFS.exists("/config.json")) {
+    if (SPIFFS.exists(CONFIG_FILE)) {
       //file exists, reading and loading
       Serial.println(F("reading config file"));
-      File configFile = SPIFFS.open("/config.json", "r");
+      File configFile = SPIFFS.open(CONFIG_FILE, "r");
       if (configFile) {
         Serial.println(F("opened config file"));
         size_t size = configFile.size();
@@ -317,8 +328,10 @@ void cfgbywm() {
 
   Serial.println("WiFi connected...yeey :)");             //if you get here you have connected to the WiFi
   ld.print("  wifi  ", 1);
-  ld.print(" online ", 2);
-
+  if (DISP_AMOUNT == 2) {
+      ld.print(" online ", 2);
+    }
+  
   parsesymbols(String(custom_symbol.getValue()));
 
   if  (((String(custom_sbrightness.getValue()).toInt()) <= 0) or ((String(custom_sbrightness.getValue()).toInt()) > 16) or
@@ -344,7 +357,7 @@ void cfgbywm() {
     json["symbol"] = upsym;
     json["sbrightness"] = sbrightness;
     json["symtime"] = symtime;
-    File configFile = SPIFFS.open("/config.json", "w");
+    File configFile = SPIFFS.open(CONFIG_FILE, "w");
     if (!configFile) {
       Serial.println(F("failed to open config file for writing"));
     }
@@ -383,7 +396,9 @@ void setup() {
   ld.init();
   ld.setBright(DISP_BRGTH, ALL_MODULES);
   ld.print(F("dread.cz "), 1);
-  ld.print(F(" ticker "), 2);
+  if (DISP_AMOUNT == 2) {
+    ld.print(F(" ticker "), 2);
+  }
 
   cfgbywm();
 
@@ -436,7 +451,9 @@ void loop() {
   if (clrflag) {
     digitalWrite(LED_BUILTIN, LOW);
     ld.print(F("reconfig"), 1);
-    ld.print(F(" button "), 2);
+    if (DISP_AMOUNT == 2) {
+      ld.print(F(" button "), 2);
+    }
     webSocket.disconnect();
     WiFi.disconnect();
     //WiFiManager wifiManager;
@@ -462,19 +479,19 @@ void loop() {
         prevval = symarray[symidx].change;
        // Serial.println(F("[LED] showing change"));
         String temp = String(symarray[symidx].change, 1);
-        while (temp.length() < 7) {
+        while (temp.length() < 6) {
           temp = " " + temp;
         }
-        temp = "CH" + temp;
-        ld.print(temp, 2);
+        temp = "C24" + temp;
+        ld.print(temp, DISP_AMOUNT);
       }
     } else if (symarray[symidx].price != prevval) {
     //  Serial.println(F("[LED] showing price"));
       prevval = symarray[symidx].price;
       if (prevval >= 1000000) {
-        ld.print(String(prevval, 0), 2); //print no decimal places
+        ld.print(String(prevval, 0), DISP_AMOUNT); //print no decimal places
       } else if (prevval >= 10) {
-        ld.print(String(prevval, 2), 2); //print 2 decimal places
+        ld.print(String(prevval, 2), DISP_AMOUNT); //print 2 decimal places
       } else {
         //its smaller than 10, lets count how many decimals we need to display
         byte needdeci = 2;  //lets start with 2
@@ -483,21 +500,27 @@ void loop() {
           needdeci++;
           temppr = temppr * 10;
         }
-        ld.print(String(prevval, needdeci), 2); //print needdeci decimal places
+        //DISP_AMOUNT used here to display value on 1st (and only) display if we have 1, and on the 2nd if we have 2
+        ld.print(String(prevval, needdeci), DISP_AMOUNT); //print needdeci decimal places
       }
     }
     if (symidx != prevsymidx) { //symbol changed, display it
-   //   Serial.println(F("[LED] showing symbol"));
-      prevsymidx = symidx;
-      ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st module
+      if (DISP_AMOUNT == 2) {
+        //show the symbol only if we have two displays
+        Serial.println(F("[LED] showing symbol"));
+        ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st modules
+      }
+    prevsymidx = symidx;
     }
   } else { //nothing subscribed, display message that trying connect
     if (prevval != -200) { // send it to display only once, not everytime the loop passes
       prevval = -200;
       prevsymidx = -1;
       Serial.println("[LED] showing cnct");
-      ld.print("cnct to ", 1);
-      ld.print("bitfinex", 2);
+      ld.print("cnct api", 1);
+      if (DISP_AMOUNT == 2) {
+        ld.print("bitfinex", 2);
+      }
     }
   }
 }
