@@ -495,7 +495,7 @@ void loop() {
       needdeci = 0;
       temppr = prevval;
       while ((temppr < 100) and (needdeci < 7)) {       //we want to display decimals only for for numbers <100
-        needdeci ++;
+        needdeci ++;                                    //and we want more decimals for small numbers
         temppr = temppr * 10;
       }
       ld.print(String(prevval, needdeci), DISP_AMOUNT); //print needdeci decimal places
