@@ -1,6 +1,5 @@
 #include <FS.h>
 #include <esp8266_hw_spi_max7219_7seg.h>  //https://github.com/BugerDread/esp8266-hw-spi-max7219-7seg
-#include <EEPROM.h>
 #include <Ticker.h>
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 #include <ESP8266WiFi.h>
@@ -14,21 +13,21 @@ const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
 const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
 const uint8_t DISP_BRGTH = 8;                 //brightness of the display
 const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
-const char CONFIG_FILE[] = "config.json";        //file to save confoguration to
+const char * const CONFIG_FILE = "config.json";        //file to save confoguration to
 
 const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
 const uint8_t CFG_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
 const uint8_t CFG_TIME = 5;                   //time [s] to hold CFG_BUTTON to activate cfg portal
 
-const char APISRV[] = "api.bitfinex.com";
+const char * const APISRV = "api.bitfinex.com";
 const uint16_t APIPORT = 443;
-const char APIURL[] = "/ws/2";
-const char REQ1[] = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
-const char REQ2[] = "\"}";
+const char * const APIURL = "/ws/2";
+const char * const REQ1 = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
+const char * const REQ2 = "\"}";
 const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
 const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
-const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //jargest json
+const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json (according to https://arduinojson.org/v6/assistant/)
 
 //define your default values here, if there are different values in CONFIG_FILE, they are overwritten.
 char symbol[130] = "BTCUSD";
@@ -57,7 +56,7 @@ struct  symboldata_t {
 symboldata_t symarray[16];
 
 Ticker symticker; //ticker to switch symbols
-Ticker hbticker;
+Ticker hbticker; 
 Ticker rstticker;
 WebSocketsClient webSocket;
 BgrMax7seg ld = BgrMax7seg(SPI_SPEED, SPI_CSPIN, DISP_AMOUNT); //init display
@@ -194,7 +193,7 @@ bool parsepl() {
 }
 
 void hbcheck() {
-  bool ok = true; // false; // for testing only
+  bool ok = true;                       // for testing only
   for (byte i = 0; i < symnum; i++) {   //for all symbols
     if (symarray[i].hb != true) {
       ok = false;
@@ -376,7 +375,7 @@ void cfgbywm() {
 void setup() {
   Serial.begin(115200);
 
-  // initialize digital pin LED_BUILTIN as an output.
+  // initialize digital pin LED_BUILTIN as an output and turn off the LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
@@ -409,14 +408,8 @@ void setup() {
     Serial.println(i);
   }
 
-  Serial.print("[Setup] My IP: ");
+  Serial.print(F("[Setup] My IP: "));
   Serial.println(WiFi.localIP());
-
-  digitalWrite(LED_BUILTIN, HIGH);
-
-  pinMode(CFG_BUTTON, INPUT_PULLUP);  //button for reset of params
-  //ld.clear(ALL_MODULES);
-
   Serial.print("[Setup] symnum = ");
   Serial.println(symnum);
   
@@ -431,6 +424,8 @@ void setup() {
   hbticker.attach(HB_TIMEOUT, hbcheck);
   Serial.print("[Setup] started HB check ticker, time: ");
   Serial.println(HB_TIMEOUT);
+
+  pinMode(CFG_BUTTON, INPUT_PULLUP);  //button for reset of params
 }
 
 String temp;
