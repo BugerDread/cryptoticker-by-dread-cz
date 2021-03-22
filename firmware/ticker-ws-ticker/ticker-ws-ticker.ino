@@ -5,6 +5,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <WebSocketsClient.h>     //https://github.com/Links2004/arduinoWebSockets   
+#include <EEPROM.h>
 
 // configuration
 const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
@@ -30,9 +31,13 @@ const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
 //define your default values here, if there are different values in CONFIG_FILE, they are overwritten.
-char symbol[130] = "BTCUSD";
-char sbrightness[4] = "8";
-char symtime[4] = "3";
+//char symbol[130] = "BTCUSD";
+//char sbrightness[4] = "8";
+//char symtime[4] = "3";
+
+const char * const CFG_DEF_SYMBOLS = "BTCUSD";
+const uint8_t CFG_DEF_BRIGHTNESS = 8;
+const uint8_t CFG_DEF_CYCLE_TIME = 3;
 
 float price = -1;
 float prevval = -1;
@@ -61,6 +66,53 @@ Ticker hbticker;
 Ticker rstticker;
 WebSocketsClient webSocket;
 BgrMax7seg ld = BgrMax7seg(SPI_SPEED, SPI_CSPIN, DISP_AMOUNT); //init display
+
+struct cfg_t {        
+  char symbols[130];
+  uint8_t brightness;
+  uint8_t cycle_time;
+  uint8_t checksum;
+} cfg;
+
+uint8_t cfg_checksum(const cfg_t c) {
+  uint8_t checksum = 0;
+  for (uint8_t * i = (uint8_t *)&c; i < ((uint8_t *)&c + sizeof(c) - sizeof(c.checksum)); i++) {
+    //i is pointer to uint_8, initial value addres of c, iterate over all bytes of c except last one which is the checksum itself
+    checksum = (checksum + *i) & 0xff;
+  }
+  return checksum;
+}
+
+bool get_cfg_eeprom() {
+  EEPROM.get(0, cfg);
+  Serial.println(F("Settings loaded from EEPROM"));
+  Serial.print(F("Symbols: "));
+  Serial.println(cfg.symbols);
+  Serial.print(F("Cycle time: "));
+  Serial.println(cfg.cycle_time);
+  Serial.print(F("Brightness: "));
+  Serial.println(cfg.brightness);
+  Serial.print(F("Checksum: "));
+  Serial.print(cfg.checksum);
+  if (cfg.checksum == cfg_checksum(cfg)) {
+    Serial.println(F(" [VALID]"));
+    return true;
+  } else {
+    Serial.println(F(" [INVALID]"));
+    return false;
+  }
+}
+
+bool save_cfg_eeprom() {
+  EEPROM.put(0, cfg);
+  if (EEPROM.commit()) {
+    Serial.println("Settings saved");
+    return true;
+  } else {
+    Serial.println("EEPROM error");
+    return false;
+  }
+}
 
 void rstwmcfg() {
   if (digitalRead(CFG_BUTTON) == LOW) {  //if still pressed
@@ -233,88 +285,17 @@ void parsesymbols(String s) {
   }
 }
 
-bool initspiffs() {
-  Serial.println(F("[SPIFFS] init started"));
-  SPIFFSConfig cfg;
-  cfg.setAutoFormat(false);   //disable autoformat on spiffs begin so we can detect and display info
-  SPIFFS.setConfig(cfg);      //apply the config
-  
-  if (SPIFFS.begin()) {
-    //SPIFFS ok
-    Serial.println(F("[SPIFFS] ready"));
-    return true;
-  } else {
-    //SPIFFS not ok, try to format it
-    Serial.println(F("[SPIFFS] Formatting file system"));
-    ld.print(F("  wait  "), 1);
-    if (DISP_AMOUNT == 2) {
-      ld.print(F(" please "), 2);
-    }
-    if (SPIFFS.format()) {
-      //SPIFFS format OK
-      Serial.println(F("[SPIFFS] format OK"));
-      if (SPIFFS.begin()) {
-        Serial.println(F("[SPIFFS] ready"));
-        return true;
-      } else {
-        Serial.println(F("[SPIFFS] mount after format failed"));
-        return false;
-      }
-    } else {
-      //SPIFFS format failed
-      Serial.println(F("[SPIFFS] format FAILED"));
-      return false;
-    }
-  }
-}
 
-boolean load_config() {
-    if (!initspiffs()) {
-      Serial.println(F("Failed to init SPIFFS, cant read config"));
-      return false;                                                   //fail
-    } else {
-    Serial.println(F("Init SPIFFS OK"));
-    if (SPIFFS.exists(CONFIG_FILE)) {                                 //file exists, reading and loading
-      Serial.println(F("Config file found"));
-      File configFile = SPIFFS.open(CONFIG_FILE, "r");
-      if (configFile) {
-        Serial.print(F("Opened config file OK, filesize: "));
-        size_t size = configFile.size();
-        Serial.println(size);
-        // Allocate a buffer to store contents of the file.
-        std::unique_ptr<char[]> buf(new char[size]);
-        configFile.readBytes(buf.get(), size);
-        StaticJsonDocument<jcapacity> json;
-        DeserializationError error = deserializeJson(json, buf.get());                //deserialize
-        if (!error) {
-          Serial.println(F("Config json parsed OK"));
-          strcpy(symbol, json["symbol"]);
-          strcpy(sbrightness, json["sbrightness"]);
-          strcpy(symtime, json["symtime"]);
-        } else {
-          Serial.println(F("failed to load json config"));
-        }
-        configFile.close();
-      }
-    }
-  
-    
-  }
-  //end read
-}
 
 void cfgbywm() {
-
-
-
   WiFiManager wifiManager;                                //Local intialization. Once its business is done, there is no need to keep it around
 
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
-  WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", symbol, 128);
-  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [0 - 15]", sbrightness, 2);
-  WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", symtime, 3);
+  WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", String(cfg.symbols).c_str(), 128);
+  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [0 - 15]", String(cfg.brightness).c_str(), 2);
+  WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", String(cfg.cycle_time).c_str(), 3);
 
   wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
   wifiManager.setAPCallback(configModeCallback);          //flash led if in config mode
@@ -347,30 +328,14 @@ void cfgbywm() {
     ESP.reset(); 
   }
 
-  strcpy(symbol, custom_symbol.getValue());               //read updated parameters
-  strcpy(sbrightness, custom_sbrightness.getValue());               //read updated parameters
-  strcpy(symtime, custom_symtime.getValue());
+  strncpy(cfg.symbols, custom_symbol.getValue(), sizeof(cfg.symbols));               //read updated parameters
+  cfg.brightness = String(custom_sbrightness.getValue()).toInt();               //read updated parameters
+  cfg.cycle_time = String(custom_symtime.getValue()).toInt();
 
   //save the custom parameters to FS
   if (shouldSaveConfig) {
     Serial.println(F("saving config"));
-    DynamicJsonDocument json(jcapacity);
-    //JsonObject& json = jsonBuffer.createObject();
-    String upsym = symbol;
-    upsym.toUpperCase();
-    json["symbol"] = upsym;
-    json["sbrightness"] = sbrightness;
-    json["symtime"] = symtime;
-    File configFile = SPIFFS.open(CONFIG_FILE, "w");
-    if (!configFile) {
-      Serial.println(F("failed to open config file for writing"));
-    }
-    //json.printTo(Serial);
-    serializeJson(json, Serial);
-    serializeJson(json, configFile);
-    //json.printTo(configFile);
-    configFile.close();
-    //end save
+    save_cfg_eeprom();
   }
 
   SPIFFS.end();
@@ -379,10 +344,13 @@ void cfgbywm() {
 
 void setup() {
   Serial.begin(115200);
+  delay (1000);
+  
   // initialize digital pin LED_BUILTIN as an output and turn off the LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
   Serial.println(F("[Setup] Boot!"));
+  
   Serial.print(F("Compile date: "));
   Serial.println(FPSTR(COMPILE_DATE));
 
@@ -401,20 +369,32 @@ void setup() {
     ld.print(F(" ticker "), 2);
   }
 
+  //get configuration from eeprom
+  EEPROM.begin(512);
+  if (!get_cfg_eeprom()) {
+    //configuration in eeprom is not valid - we need to create default one
+    Serial.println(F("EEPROM checksum invalid, creating default configuration"));
+    strncpy (cfg.symbols, CFG_DEF_SYMBOLS, sizeof(cfg.symbols));
+    cfg.brightness = CFG_DEF_BRIGHTNESS;
+    cfg.cycle_time = CFG_DEF_CYCLE_TIME;
+    cfg.checksum = cfg_checksum(cfg);
+    save_cfg_eeprom();
+  }
+
   cfgbywm();
 
-  uint8_t i = 15 & String(sbrightness).toInt() ;  //max brightness is 15 so cap it to 15
-  ld.setBright(i, ALL_MODULES);
+  //uint8_t i = 15 & String(sbrightness).toInt() ;  //max brightness is 15 so cap it to 15
+  ld.setBright(cfg.brightness, ALL_MODULES);
   Serial.print(F("Setting display brightness to: "));
-  Serial.println(i);
+  Serial.println(cfg.brightness);
   Serial.print(F("[Setup] My IP: "));
   Serial.println(WiFi.localIP());
   Serial.print(F("[Setup] symnum = "));
   Serial.println(symnum);
   
-  symticker.attach(String(symtime).toInt(), nextsymidx);
+  symticker.attach(cfg.cycle_time, nextsymidx);
   Serial.print("[Setup] symbol cycle time: ");
-  Serial.println(String(symtime));
+  Serial.println(cfg.cycle_time);
 
   //start the connection
   webSocket.beginSSL(APISRV, APIPORT, APIURL);  //, "#INSECURE#"
