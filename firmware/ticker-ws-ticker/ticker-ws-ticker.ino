@@ -27,12 +27,13 @@ const char * const REQ2 = "\"}";
 const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
 const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
-const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json (according to https://arduinojson.org/v6/assistant/)
+const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
 //define your default values here, if there are different values in CONFIG_FILE, they are overwritten.
 char symbol[130] = "BTCUSD";
 char sbrightness[4] = "8";
 char symtime[4] = "3";
+
 float price = -1;
 float prevval = -1;
 String pays = "";
@@ -123,7 +124,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 }
 
 bool parsepl() {
-  DynamicJsonDocument jdoc(jcapacity);
+  StaticJsonDocument<jcapacity> jdoc;
   auto error = deserializeJson(jdoc, pays);   //deserialize
   pays = "";
   // Test if parsing succeeds.
@@ -234,10 +235,9 @@ void parsesymbols(String s) {
 
 bool initspiffs() {
   Serial.println(F("[SPIFFS] init started"));
-  
   SPIFFSConfig cfg;
   cfg.setAutoFormat(false);   //disable autoformat on spiffs begin so we can detect and display info
-  SPIFFS.setConfig(cfg);
+  SPIFFS.setConfig(cfg);      //apply the config
   
   if (SPIFFS.begin()) {
     //SPIFFS ok
@@ -268,26 +268,26 @@ bool initspiffs() {
   }
 }
 
-void cfgbywm() {
-  // wifi manager = config save / load
-  //read configuration from FS json
-
-  if (initspiffs()) {
-    Serial.println(F("mounted file system"));
-    if (SPIFFS.exists(CONFIG_FILE)) {
-      //file exists, reading and loading
-      Serial.println(F("reading config file"));
+boolean load_config() {
+    if (!initspiffs()) {
+      Serial.println(F("Failed to init SPIFFS, cant read config"));
+      return false;                                                   //fail
+    } else {
+    Serial.println(F("Init SPIFFS OK"));
+    if (SPIFFS.exists(CONFIG_FILE)) {                                 //file exists, reading and loading
+      Serial.println(F("Config file found"));
       File configFile = SPIFFS.open(CONFIG_FILE, "r");
       if (configFile) {
-        Serial.println(F("opened config file"));
+        Serial.print(F("Opened config file OK, filesize: "));
         size_t size = configFile.size();
+        Serial.println(size);
         // Allocate a buffer to store contents of the file.
         std::unique_ptr<char[]> buf(new char[size]);
         configFile.readBytes(buf.get(), size);
-        DynamicJsonDocument json(jcapacity);
-        auto error = deserializeJson(json, buf.get());   //deserialize
+        StaticJsonDocument<jcapacity> json;
+        DeserializationError error = deserializeJson(json, buf.get());                //deserialize
         if (!error) {
-          Serial.println(F("\nparsed json"));
+          Serial.println(F("Config json parsed OK"));
           strcpy(symbol, json["symbol"]);
           strcpy(sbrightness, json["sbrightness"]);
           strcpy(symtime, json["symtime"]);
@@ -297,10 +297,15 @@ void cfgbywm() {
         configFile.close();
       }
     }
-  } else {
-    Serial.println(F("failed to mount FS"));
+  
+    
   }
   //end read
+}
+
+void cfgbywm() {
+
+
 
   WiFiManager wifiManager;                                //Local intialization. Once its business is done, there is no need to keep it around
 
@@ -308,7 +313,7 @@ void cfgbywm() {
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
   WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", symbol, 128);
-  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [1 - 16]", sbrightness, 2);
+  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [0 - 15]", sbrightness, 2);
   WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", symtime, 3);
 
   wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
@@ -374,12 +379,9 @@ void cfgbywm() {
 
 void setup() {
   Serial.begin(115200);
-
   // initialize digital pin LED_BUILTIN as an output and turn off the LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
-
-  //Serial.setDebugOutput(true);
   Serial.println(F("[Setup] Boot!"));
   Serial.print(F("Compile date: "));
   Serial.println(FPSTR(COMPILE_DATE));
@@ -401,16 +403,13 @@ void setup() {
 
   cfgbywm();
 
-  long i = String(sbrightness).toInt();
-  if (( i >= 1 ) and (i <= 16)) {
-    ld.setBright(i - 1, ALL_MODULES);
-    Serial.print(F("Setting display brightness to: "));
-    Serial.println(i);
-  }
-
+  uint8_t i = 15 & String(sbrightness).toInt() ;  //max brightness is 15 so cap it to 15
+  ld.setBright(i, ALL_MODULES);
+  Serial.print(F("Setting display brightness to: "));
+  Serial.println(i);
   Serial.print(F("[Setup] My IP: "));
   Serial.println(WiFi.localIP());
-  Serial.print("[Setup] symnum = ");
+  Serial.print(F("[Setup] symnum = "));
   Serial.println(symnum);
   
   symticker.attach(String(symtime).toInt(), nextsymidx);
