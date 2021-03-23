@@ -301,9 +301,13 @@ void cfgbywm() {
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
-  WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", String(cfg.symbols).c_str(), 128);
-  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [0 - 15]", String(cfg.brightness).c_str(), 2);
-  WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", String(cfg.cycle_time).c_str(), 3);
+  WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", cfg.symbols, 128);
+  char sbr[4];
+  itoa(cfg.brightness, sbr, 10);
+  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [0 - 15]", sbr, 2);
+  char sctime[4];
+  itoa(cfg.cycle_time, sctime, 10);
+  WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", sctime, 3);
 
   wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
   wifiManager.setAPCallback(configModeCallback);          //flash led if in config mode
@@ -337,10 +341,10 @@ void cfgbywm() {
   }
 
   strncpy(cfg.symbols, custom_symbol.getValue(), sizeof(cfg.symbols));               //read updated parameters
-  cfg.brightness = String(custom_sbrightness.getValue()).toInt();               //read updated parameters
-  cfg.cycle_time = String(custom_symtime.getValue()).toInt();
+  cfg.brightness = atoi(custom_sbrightness.getValue());               //read updated parameters
+  cfg.cycle_time = atoi(custom_symtime.getValue());
 
-  //save the custom parameters to FS
+  //save the custom parameters to EEPROM
   if (shouldSaveConfig) {
     save_cfg_eeprom();
   }
