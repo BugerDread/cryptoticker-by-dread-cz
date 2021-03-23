@@ -47,7 +47,8 @@ int symnum = 0;
 
 //array for ticker data
 struct  symboldata_t {
-  String symbol;
+  //String symbol;
+  char symbol[7];
   long chanid;
   float price;
   float change;
@@ -218,8 +219,12 @@ bool parsepl(const char * payload, const size_t len) {
       // check if its a subscribe event info
       if (jdoc["event"] == "info") {
         if (subsidx == 0) {
-          Serial.println("[Prs] Got info, lets subscribe 1st ticker symbol: " + symarray[subsidx].symbol);
-            webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
+          Serial.print(F("[Prs] Got info, lets subscribe 1st ticker symbol: "));
+          Serial.println(symarray[subsidx].symbol);
+          char txbuff[strlen(REQ1) + 6 + strlen(REQ2) + 1];
+          snprintf(txbuff, sizeof(txbuff), "%s%s%s", REQ1, symarray[subsidx].symbol, REQ2);
+          //Serial.println(txbuff);
+          webSocket.sendTXT(txbuff, strlen(txbuff));
         }
       } else if (jdoc["event"] == "subscribed")  {
         if (jdoc["chanId"] != false) {
@@ -229,7 +234,10 @@ bool parsepl(const char * payload, const size_t len) {
           subsidx++;  //move to next symbol in array
           if (subsidx < symnum) { //subscribe next
             Serial.print("[Prs] Lets subscribe next ticker symbol: ");
-              webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
+            //webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
+            char txbuff[strlen(REQ1) + 6 + strlen(REQ2) + 1];
+            snprintf(txbuff, sizeof(txbuff), "%s%s%s", REQ1, symarray[subsidx].symbol, REQ2);
+            webSocket.sendTXT(txbuff, strlen(txbuff));
           }
         } else {
           Serial.println(F("[Prs] Ticker subscribe failed"));
@@ -269,14 +277,17 @@ void parsesymbols(String s) {
     if (pos == -1) { //last symbol
       Serial.print("[Setup] last symbol: ");
       Serial.println(s.substring(last));
-      symarray[symnum].symbol = s.substring(last);
+      //symarray[symnum].symbol = s.substring(last);
+      snprintf(symarray[symnum].symbol, sizeof(symarray[symnum].symbol), "%s", s.substring(last).c_str());
     } else {
       Serial.print("[Setup] add symbol: ");
       Serial.println(s.substring(last, pos));
-      symarray[symnum].symbol = s.substring(last, pos);
+      //symarray[symnum].symbol = s.substring(last, pos);
+      snprintf(symarray[symnum].symbol, sizeof(symarray[symnum].symbol), "%s", s.substring(last, pos).c_str());
       last = pos + 1;
     }
-    symarray[symnum].symbol.toUpperCase();
+    //symarray[symnum].symbol.toUpperCase();
+    strupr(symarray[symnum].symbol);
     symarray[symnum].hb = false;
     symnum++;
   }
@@ -477,7 +488,7 @@ void loop() {
         //show the symbol only if we have two displays
         Serial.println(F("[LED] showing symbol"));
         //ld.print(' ' + symarray[symidx].symbol + ' ', 1); //print on 1st modules
-        snprintf(dbuff, sizeof(dbuff), " %s ", symarray[symidx].symbol.c_str());
+        snprintf(dbuff, sizeof(dbuff), " %s ", symarray[symidx].symbol);
         ld.print(dbuff, 1);
       }
     prevsymidx = symidx;
