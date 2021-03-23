@@ -70,7 +70,7 @@ struct cfg_t {
 } cfg;
 
 uint8_t cfg_checksum(const cfg_t c) {
-  uint8_t checksum = 0;
+  uint8_t checksum = 42;    //init value, to make chcecksum of config full of 0s invalid
   for (uint8_t * i = (uint8_t *)&c; i < ((uint8_t *)&c + sizeof(c) - sizeof(c.checksum)); i++) {
     //i is pointer to uint_8, initial value addres of c, iterate over all bytes of c except last one which is the checksum itself
     checksum = (checksum + *i) & 0xff;
