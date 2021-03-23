@@ -56,6 +56,7 @@ struct  symboldata_t {
 
 symboldata_t symarray[16];
 
+StaticJsonDocument<jcapacity> jdoc;
 Ticker symticker; //ticker to switch symbols
 Ticker hbticker; 
 Ticker rstticker;
@@ -145,7 +146,7 @@ void saveConfigCallback () {
   shouldSaveConfig = true;
 }
 
-void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t len) {
   switch (type) {
     case WStype_DISCONNECTED: {
         Serial.println("[WSc] Disconnected!");
@@ -160,21 +161,21 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     case WStype_TEXT: {
         Serial.print("[WSc] data: ");
         Serial.println((char*)payload);
-        pays = (char*)payload;
+        //pays = (char*)payload;
+        parsepl((char*)payload, len);
       }
       break;
     case WStype_BIN: {
         Serial.print("[WSc] get binary length: ");
-        Serial.println(length);
+        Serial.println(len);
       }
       break;
   }
 }
 
-bool parsepl() {
-  StaticJsonDocument<jcapacity> jdoc;
-  auto error = deserializeJson(jdoc, pays);   //deserialize
-  pays = "";
+bool parsepl(const char * payload, const size_t len) {
+  DeserializationError error = deserializeJson(jdoc, payload, len);   //deserialize
+  //pays = "";
   // Test if parsing succeeds.
   if (!error) {
     //   Serial.println(F("[Prs] its an array"));
@@ -186,11 +187,11 @@ bool parsepl() {
       temphb = true;
     } else if (jdoc[1][6] != nullptr) { // new prize
       newdata = true;
-      Serial.print("[Prs] Update, price: ");
+      //Serial.print("[Prs] Update, price: ");
       //tp = root[1][6];
-      Serial.print((float)jdoc[1][6]);
-      Serial.print(", change: ");
-      Serial.println(100*(float)jdoc[1][5]);
+      //Serial.print((float)jdoc[1][6]);
+      //Serial.print(", change: ");
+      //Serial.println(100*(float)jdoc[1][5]);
     } 
 
     //[CHANNEL_ID,[BID,BID_SIZE,ASK,ASK_SIZE,DAILY_CHANGE,DAILY_CHANGE_PERC,LAST_PRICE,VOLUME,HIGH,LOW]]
@@ -201,8 +202,8 @@ bool parsepl() {
         if (symarray[i].chanid == jdoc[0]) {  //we found it
           if (newdata == true) {
             symarray[i].price = jdoc[1][6]; 
-            symarray[i].change = jdoc[1][5];
-            symarray[i].change *= 100;
+            symarray[i].change = 100.0 * (float)(jdoc[1][5]);
+            //symarray[i].change *= 100;
             }
           //if (temphb == true) 
           symarray[i].hb = true; 
@@ -231,7 +232,7 @@ bool parsepl() {
               webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
           }
         } else {
-          Serial.println("[Prs] Ticker subscribe failed");
+          Serial.println(F("[Prs] Ticker subscribe failed"));
         }
       }
       return true;
@@ -410,10 +411,10 @@ void loop() {
     rstticker.attach(CFGPORTAL_BUTTON_TIME, rstwmcfg);
   }
   
-  if (pays != "") {
-    parsepl();
-  //  Serial.println(F("parsing"));
-  }
+//  if (pays != "") {
+//    parsepl();
+//  //  Serial.println(F("parsing"));
+//  }
 
   if (clrflag) {
     digitalWrite(LED_BUILTIN, LOW);
@@ -445,12 +446,14 @@ void loop() {
       if (prevval != symarray[symidx].change) {
         prevval = symarray[symidx].change;
        // Serial.println(F("[LED] showing change"));
-        String temp = String(symarray[symidx].change, 1);
-        while (temp.length() < 6) {
-          temp = " " + temp;
-        }
-        temp = "C24" + temp;
-        ld.print(temp, DISP_AMOUNT);
+        //String temp = String(symarray[symidx].change, 1);
+        //while (temp.length() < 6) {
+        //  temp = " " + temp;
+        //}
+        //temp = "C24" + temp;
+        char dbuff[9];
+        snprintf(dbuff, sizeof(dbuff), "C%#8.1f", symarray[symidx].change);
+        ld.print(dbuff, DISP_AMOUNT);
       }
     } else if (symarray[symidx].price != prevval) {
       //  Serial.println(F("[LED] showing price"));
