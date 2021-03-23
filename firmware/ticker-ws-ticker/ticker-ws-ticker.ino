@@ -1,4 +1,3 @@
-#include <FS.h>
 #include <esp8266_hw_spi_max7219_7seg.h>  //https://github.com/BugerDread/esp8266-hw-spi-max7219-7seg
 #include <Ticker.h>
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
@@ -14,11 +13,16 @@ const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
 const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
 const uint8_t DISP_BRGTH = 8;                 //brightness of the display
 const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
-const char * const CONFIG_FILE = "config.json";        //file to save confoguration to
 
 const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
-const uint8_t CFG_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
-const uint8_t CFG_TIME = 5;                   //time [s] to hold CFG_BUTTON to activate cfg portal
+const uint8_t CFGPORTAL_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
+const uint8_t CFGPORTAL_BUTTON_TIME = 5;                   //time [s] to hold CFGPORTAL_BUTTON to activate cfg portal
+const char * const CFGPORTAL_SSID = "Bgr ticker";
+const char * const CFGPORTAL_PWD = "btcbtcbtc";
+
+const char * const CFG_DEF_SYMBOLS = "BTCUSD";
+const uint8_t CFG_DEF_BRIGHTNESS = 8;
+const uint8_t CFG_DEF_CYCLE_TIME = 3;
 
 const char * const APISRV = "api.bitfinex.com";
 const uint16_t APIPORT = 443;
@@ -29,15 +33,6 @@ const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
 const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
 const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
-
-//define your default values here, if there are different values in CONFIG_FILE, they are overwritten.
-//char symbol[130] = "BTCUSD";
-//char sbrightness[4] = "8";
-//char symtime[4] = "3";
-
-const char * const CFG_DEF_SYMBOLS = "BTCUSD";
-const uint8_t CFG_DEF_BRIGHTNESS = 8;
-const uint8_t CFG_DEF_CYCLE_TIME = 3;
 
 float price = -1;
 float prevval = -1;
@@ -85,37 +80,38 @@ uint8_t cfg_checksum(const cfg_t c) {
 
 bool get_cfg_eeprom() {
   EEPROM.get(0, cfg);
-  Serial.println(F("Settings loaded from EEPROM"));
-  Serial.print(F("Symbols: "));
-  Serial.println(cfg.symbols);
-  Serial.print(F("Cycle time: "));
-  Serial.println(cfg.cycle_time);
-  Serial.print(F("Brightness: "));
-  Serial.println(cfg.brightness);
-  Serial.print(F("Checksum: "));
-  Serial.print(cfg.checksum);
+  Serial.println(F("Loading config from EEPROM"));
+  Serial.print(F("Checksum "));
   if (cfg.checksum == cfg_checksum(cfg)) {
-    Serial.println(F(" [VALID]"));
+    Serial.print(F("[VALID]: "));
+    Serial.println(cfg.checksum);
+    Serial.print(F("Symbols: "));
+    Serial.println(cfg.symbols);
+    Serial.print(F("Cycle time: "));
+    Serial.println(cfg.cycle_time);
+    Serial.print(F("Brightness: "));
+    Serial.println(cfg.brightness);
     return true;
   } else {
-    Serial.println(F(" [INVALID]"));
+    Serial.println(F("[INVALID] !"));
     return false;
   }
 }
 
 bool save_cfg_eeprom() {
+  cfg.checksum = cfg_checksum(cfg);
   EEPROM.put(0, cfg);
   if (EEPROM.commit()) {
-    Serial.println("Settings saved");
+    Serial.println(F("Config saved to EEPROM"));
     return true;
   } else {
-    Serial.println("EEPROM error");
+    Serial.println(F("EEPROM error, cant save config"));
     return false;
   }
 }
 
 void rstwmcfg() {
-  if (digitalRead(CFG_BUTTON) == LOW) {  //if still pressed
+  if (digitalRead(CFGPORTAL_BUTTON) == LOW) {  //if still pressed
     clrflag = true;
   } else {                      //not pressed anymore
     rstticker.detach();
@@ -306,7 +302,7 @@ void cfgbywm() {
   //wifiManager.setMinimumSignalQuality();                //set minimu quality of signal so it ignores AP's under that quality, defaults to 8%
   wifiManager.setTimeout(CFGPORTAL_TIMEOUT);                          //sets timeout until configuration portal gets turned off useful to make it all retry or go to sleep in seconds
 
-  if (!wifiManager.autoConnect("Bgr ticker", "btcbtcbtc")) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
+  if (!wifiManager.autoConnect(CFGPORTAL_SSID, CFGPORTAL_PWD)) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
     Serial.println(F("Config portal timeout, trying to connect again"));
     ESP.reset();                                          //reset and try again, or maybe put it to deep sleep
   }
@@ -334,12 +330,8 @@ void cfgbywm() {
 
   //save the custom parameters to FS
   if (shouldSaveConfig) {
-    Serial.println(F("saving config"));
     save_cfg_eeprom();
   }
-
-  SPIFFS.end();
-  Serial.println(F("[SPIFFS] end"));
 }
 
 void setup() {
@@ -377,7 +369,6 @@ void setup() {
     strncpy (cfg.symbols, CFG_DEF_SYMBOLS, sizeof(cfg.symbols));
     cfg.brightness = CFG_DEF_BRIGHTNESS;
     cfg.cycle_time = CFG_DEF_CYCLE_TIME;
-    cfg.checksum = cfg_checksum(cfg);
     save_cfg_eeprom();
   }
 
@@ -404,7 +395,7 @@ void setup() {
   Serial.print("[Setup] started HB check ticker, time: ");
   Serial.println(HB_TIMEOUT);
 
-  pinMode(CFG_BUTTON, INPUT_PULLUP);  //button for reset of params
+  pinMode(CFGPORTAL_BUTTON, INPUT_PULLUP);  //button for reset of params
 }
 
 String temp;
@@ -414,9 +405,9 @@ float temppr;
 void loop() {
   webSocket.loop();
    
-  if ((digitalRead(CFG_BUTTON) == LOW) and (!rstticker.active())) {
+  if ((digitalRead(CFGPORTAL_BUTTON) == LOW) and (!rstticker.active())) {
     Serial.println(F("[Sys] clear settings button pressed, hold it for a while to reset Wifi settings"));
-    rstticker.attach(CFG_TIME, rstwmcfg);
+    rstticker.attach(CFGPORTAL_BUTTON_TIME, rstwmcfg);
   }
   
   if (pays != "") {
