@@ -36,7 +36,7 @@ const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of j
 
 float price = -1;
 float prevval = -1;
-String pays = "";
+//String pays = "";
 bool clrflag = false;
 bool shouldSaveConfig  = false; //flag for saving data
 bool reconnflag = false;
@@ -202,7 +202,7 @@ bool parsepl(const char * payload, const size_t len) {
         if (symarray[i].chanid == jdoc[0]) {  //we found it
           if (newdata == true) {
             symarray[i].price = jdoc[1][6]; 
-            symarray[i].change = 100.0 * (float)(jdoc[1][5]);
+            symarray[i].change = (float)(jdoc[1][5]) * 100.0;
             //symarray[i].change *= 100;
             }
           //if (temphb == true) 
@@ -403,6 +403,8 @@ String temp;
 byte needdeci;
 float temppr;
 
+char dbuff[10]; //8 chars + 1decimal dot + zero terminator
+
 void loop() {
   webSocket.loop();
    
@@ -451,7 +453,6 @@ void loop() {
         //  temp = " " + temp;
         //}
         //temp = "C24" + temp;
-        char dbuff[9];
         snprintf(dbuff, sizeof(dbuff), "C%#8.1f", symarray[symidx].change);
         ld.print(dbuff, DISP_AMOUNT);
       }
@@ -466,14 +467,18 @@ void loop() {
         needdeci ++;                                    //and we want more decimals for small numbers
         temppr = temppr * 10;
       }
-      ld.print(String(prevval, needdeci), DISP_AMOUNT); //print needdeci decimal places
+      //ld.print(String(prevval, needdeci), DISP_AMOUNT); //print needdeci decimal places
+      snprintf(dbuff, sizeof(dbuff), "%#.*f", needdeci, symarray[symidx].price);
+      ld.print(dbuff, DISP_AMOUNT);
       
     }
     if (symidx != prevsymidx) { //symbol changed, display it
       if (DISP_AMOUNT == 2) {
         //show the symbol only if we have two displays
         Serial.println(F("[LED] showing symbol"));
-        ld.print(' ' + symarray[prevsymidx].symbol + ' ', 1); //print on 1st modules
+        //ld.print(' ' + symarray[symidx].symbol + ' ', 1); //print on 1st modules
+        snprintf(dbuff, sizeof(dbuff), " %s ", symarray[symidx].symbol.c_str());
+        ld.print(dbuff, 1);
       }
     prevsymidx = symidx;
     }
