@@ -7,32 +7,32 @@
 #include <EEPROM.h>
 
 // configuration
-const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
+static const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
-const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
-const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
-const uint8_t DISP_BRGTH = 8;                 //brightness of the display
-const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
+static const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
+static const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
+static const uint8_t DISP_BRGTH = 8;                 //brightness of the display
+static const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
 
-const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
-const uint8_t CFGPORTAL_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
-const uint8_t CFGPORTAL_BUTTON_TIME = 5;                   //time [s] to hold CFGPORTAL_BUTTON to activate cfg portal
-const char * const CFGPORTAL_SSID = "Bgr ticker";
-const char * const CFGPORTAL_PWD = "btcbtcbtc";
+static const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
+static const uint8_t CFGPORTAL_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
+static const uint8_t CFGPORTAL_BUTTON_TIME = 5;                   //time [s] to hold CFGPORTAL_BUTTON to activate cfg portal
+static const char CFGPORTAL_SSID[] = "Bgr ticker";
+static const char CFGPORTAL_PWD[] = "btcbtcbtc";
 
-const char * const CFG_DEF_SYMBOLS = "BTCUSD";
-const uint8_t CFG_DEF_BRIGHTNESS = 8;
-const uint8_t CFG_DEF_CYCLE_TIME = 3;
+static const char CFG_DEF_SYMBOLS[] = "BTCUSD";
+static const uint8_t CFG_DEF_BRIGHTNESS = 8;
+static const uint8_t CFG_DEF_CYCLE_TIME = 3;
 
-const char * const APISRV = "api.bitfinex.com";
-const uint16_t APIPORT = 443;
-const char * const APIURL = "/ws/2";
-const char * const REQ1 = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
-const char * const REQ2 = "\"}";
-const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
-const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
+static const char APISRV[] = "api.bitfinex.com";
+static const uint16_t APIPORT = 443;
+static const char APIURL[] = "/ws/2";
+static const char REQ1[] = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
+static const char REQ2[] = "\"}";
+static const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
+static const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
-const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
+static const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
 float price = -1;
 float prevval = -1;
@@ -217,7 +217,7 @@ bool parsepl(const char * payload, const size_t len) {
     } else {
       // its not HB or price update
       // check if its a subscribe event info
-      if (jdoc["event"] == "info") {
+      if (jdoc["event"] == F("info")) {
         if (subsidx == 0) {
           Serial.print(F("[Prs] Got info, lets subscribe 1st ticker symbol: "));
           Serial.println(symarray[subsidx].symbol);
@@ -226,14 +226,14 @@ bool parsepl(const char * payload, const size_t len) {
           //Serial.println(txbuff);
           webSocket.sendTXT(txbuff, strlen(txbuff));
         }
-      } else if (jdoc["event"] == "subscribed")  {
+      } else if (jdoc["event"] == F("subscribed"))  {
         if (jdoc["chanId"] != false) {
           symarray[subsidx].chanid = jdoc["chanId"];
-          Serial.print("[Prs] Ticker subscribe success, channel id: ");
+          Serial.print(F("[Prs] Ticker subscribe success, channel id: "));
           Serial.println(symarray[subsidx].chanid);
           subsidx++;  //move to next symbol in array
           if (subsidx < symnum) { //subscribe next
-            Serial.print("[Prs] Lets subscribe next ticker symbol: ");
+            Serial.print(F("[Prs] Lets subscribe next ticker symbol: "));
             //webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
             char txbuff[strlen(REQ1) + 6 + strlen(REQ2) + 1];
             snprintf(txbuff, sizeof(txbuff), "%s%s%s", REQ1, symarray[subsidx].symbol, REQ2);
@@ -255,14 +255,14 @@ void hbcheck() {
   for (byte i = 0; i < symnum; i++) {   //for all symbols
     if (symarray[i].hb != true) {
       ok = false;
-      Serial.print("[HBC] hb check failed, symbol = ");
+      Serial.print(F("[HBC] hb check failed, symbol = "));
       Serial.println(symarray[i].symbol);
     }
     symarray[i].hb = false; //clear all HBs
   }
-  if (ok) {Serial.println("[HBC] hb check OK");} else {
+  if (ok) {Serial.println(F("[HBC] hb check OK"));} else {
     //hbcheck failed
-    Serial.println("[HBC] hb check FAILED, reconnect websocket");
+    Serial.println(F("[HBC] hb check FAILED, reconnect websocket"));
     reconnflag = true;  //set the flag, will do the reconnect in main loop
   }
 }
@@ -275,12 +275,12 @@ void parsesymbols(String s) {
   while ((pos != -1) and (symnum <= 16) and (s.length() > 0)) {
     pos = s.indexOf(' ', last);
     if (pos == -1) { //last symbol
-      Serial.print("[Setup] last symbol: ");
+      Serial.print(F("[Setup] last symbol: "));
       Serial.println(s.substring(last));
       //symarray[symnum].symbol = s.substring(last);
       snprintf(symarray[symnum].symbol, sizeof(symarray[symnum].symbol), "%s", s.substring(last).c_str());
     } else {
-      Serial.print("[Setup] add symbol: ");
+      Serial.print(F("[Setup] add symbol: "));
       Serial.println(s.substring(last, pos));
       //symarray[symnum].symbol = s.substring(last, pos);
       snprintf(symarray[symnum].symbol, sizeof(symarray[symnum].symbol), "%s", s.substring(last, pos).c_str());
@@ -304,10 +304,10 @@ void cfgbywm() {
   WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", cfg.symbols, 128);
   char sbr[4];
   itoa(cfg.brightness, sbr, 10);
-  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [0 - 15]", sbr, 2);
+  WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [1 - 16]", sbr, 2);
   char sctime[4];
   itoa(cfg.cycle_time, sctime, 10);
-  WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", sctime, 3);
+  WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", sctime, 2);
 
   wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
   wifiManager.setAPCallback(configModeCallback);          //flash led if in config mode
@@ -323,26 +323,27 @@ void cfgbywm() {
     ESP.reset();                                          //reset and try again, or maybe put it to deep sleep
   }
 
-  Serial.println("WiFi connected...yeey :)");             //if you get here you have connected to the WiFi
-  ld.print("  wifi  ", 1);
+  Serial.println(F("WiFi connected...yeey :)"));             //if you get here you have connected to the WiFi
+  ld.print(F("  wifi  "), 1);
   if (DISP_AMOUNT == 2) {
-      ld.print(" online ", 2);
-    }
+    ld.print(F(" online "), 2);
+  }
   
   parsesymbols(String(custom_symbol.getValue()));
 
-  if  (((String(custom_sbrightness.getValue()).toInt()) <= 0) or ((String(custom_sbrightness.getValue()).toInt()) > 16) or
-         ((String(custom_symtime.getValue()).toInt()) <= 0) or ((String(custom_symtime.getValue()).toInt()) > 999) or 
-         (symnum == 0))
+  strncpy(cfg.symbols, custom_symbol.getValue(), sizeof(cfg.symbols));               //read updated parameters
+  cfg.brightness = atoi(custom_sbrightness.getValue());               //read updated parameters
+  cfg.cycle_time = atoi(custom_symtime.getValue());
+
+  if  ((cfg.brightness == 0) or (cfg.brightness > 16) or
+         (cfg.cycle_time == 0) or (cfg.cycle_time > 99) or (symnum == 0))
   {
     Serial.println(F("Parametters out of range, restart config portal"));
     WiFi.disconnect();
     ESP.reset(); 
   }
 
-  strncpy(cfg.symbols, custom_symbol.getValue(), sizeof(cfg.symbols));               //read updated parameters
-  cfg.brightness = atoi(custom_sbrightness.getValue());               //read updated parameters
-  cfg.cycle_time = atoi(custom_symtime.getValue());
+  cfg.brightness = cfg.brightness - 1;  //brightness range 0-15, but atoi return 0 when error so we made it 1-16 and here is the correction
 
   //save the custom parameters to EEPROM
   if (shouldSaveConfig) {
@@ -400,7 +401,7 @@ void setup() {
   Serial.println(symnum);
   
   symticker.attach(cfg.cycle_time, nextsymidx);
-  Serial.print("[Setup] symbol cycle time: ");
+  Serial.print(F("[Setup] symbol cycle time: "));
   Serial.println(cfg.cycle_time);
 
   //start the connection
@@ -408,13 +409,13 @@ void setup() {
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
   hbticker.attach(HB_TIMEOUT, hbcheck);
-  Serial.print("[Setup] started HB check ticker, time: ");
+  Serial.print(F("[Setup] started HB check ticker, time: "));
   Serial.println(HB_TIMEOUT);
 
   pinMode(CFGPORTAL_BUTTON, INPUT_PULLUP);  //button for reset of params
 }
 
-String temp;
+//String temp;
 byte needdeci;
 float temppr;
 
@@ -501,7 +502,7 @@ void loop() {
     if (prevval != -200) { // send it to display only once, not everytime the loop passes
       prevval = -200;
       prevsymidx = -1;
-      Serial.println("[LED] showing cnct");
+      Serial.println(F("[LED] showing cnct"));
       ld.print("cnct api", 1);
       if (DISP_AMOUNT == 2) {
         ld.print("bitfinex", 2);
