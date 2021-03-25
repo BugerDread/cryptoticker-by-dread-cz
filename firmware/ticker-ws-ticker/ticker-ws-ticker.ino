@@ -31,6 +31,7 @@ static const char REQ1[] = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"sy
 static const char REQ2[] = "\"}";
 static const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
 static const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
+static const uint8_t SYMBOL_LEN = 6;                 //length of each symbol (like BTCUSD) in characters
 
 static const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
@@ -48,7 +49,7 @@ int symnum = 0;
 //array for ticker data
 struct  symboldata_t {
   //String symbol;
-  char symbol[7];
+  char symbol[SYMBOL_LEN + 1];
   long chanid;
   float price;
   float change;
@@ -85,14 +86,10 @@ bool get_cfg_eeprom() {
   Serial.println(F("Loading config from EEPROM"));
   Serial.print(F("Checksum "));
   if (cfg.checksum == cfg_checksum(cfg)) {
-    Serial.print(F("[VALID]: "));
-    Serial.println(cfg.checksum);
-    Serial.print(F("Symbols: "));
-    Serial.println(cfg.symbols);
-    Serial.print(F("Cycle time: "));
-    Serial.println(cfg.cycle_time);
-    Serial.print(F("Brightness: "));
-    Serial.println(cfg.brightness);
+    Serial.printf_P( PSTR("[VALID]: %u\n"), cfg.checksum);
+    Serial.printf_P( PSTR("Symbols: %s\n"), cfg.symbols);
+    Serial.printf_P( PSTR("Cycle time: %u\n"), cfg.cycle_time);
+    Serial.printf_P( PSTR("Brightness: %u\n"), cfg.brightness);
     return true;
   } else {
     Serial.println(F("[INVALID] !"));
@@ -150,25 +147,23 @@ void saveConfigCallback () {
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t len) {
   switch (type) {
     case WStype_DISCONNECTED: {
-        Serial.println("[WSc] Disconnected!");
+        Serial.println(F("[WSc] Disconnected!"));
         subsidx = 0;  //no symbols subscribed
       }
       break;
     case WStype_CONNECTED: {
-        Serial.print("[WSc] Connected to url: ");
-        Serial.println((char*)payload);
+        Serial.printf_P( PSTR("[WSc] Connected to url: %s\n"), (char*)payload);
+        //Serial.println((char*)payload);
       }
       break;
     case WStype_TEXT: {
-        Serial.print("[WSc] data: ");
-        Serial.println((char*)payload);
+        Serial.printf("[WSc] data: %s\n", (char*)payload);  //not using PROGMEM here - this occurs every price update
         //pays = (char*)payload;
         parsepl((char*)payload, len);
       }
       break;
     case WStype_BIN: {
-        Serial.print("[WSc] get binary length: ");
-        Serial.println(len);
+        Serial.printf_P( PSTR("[WSc] get binary length: %u\n"), len);
       }
       break;
   }
@@ -219,8 +214,7 @@ bool parsepl(const char * payload, const size_t len) {
       // check if its a subscribe event info
       if (jdoc["event"] == F("info")) {
         if (subsidx == 0) {
-          Serial.print(F("[Prs] Got info, lets subscribe 1st ticker symbol: "));
-          Serial.println(symarray[subsidx].symbol);
+          Serial.printf_P( PSTR("[Prs] Got info, lets subscribe 1st ticker symbol: %s\n"), symarray[subsidx].symbol);
           char txbuff[strlen(REQ1) + 6 + strlen(REQ2) + 1];
           snprintf(txbuff, sizeof(txbuff), "%s%s%s", REQ1, symarray[subsidx].symbol, REQ2);
           //Serial.println(txbuff);
@@ -229,12 +223,10 @@ bool parsepl(const char * payload, const size_t len) {
       } else if (jdoc["event"] == F("subscribed"))  {
         if (jdoc["chanId"] != false) {
           symarray[subsidx].chanid = jdoc["chanId"];
-          Serial.print(F("[Prs] Ticker subscribe success, channel id: "));
-          Serial.println(symarray[subsidx].chanid);
+          Serial.printf_P( PSTR("[Prs] Ticker subscribe success, channel id: %u\n"), symarray[subsidx].chanid);
           subsidx++;  //move to next symbol in array
           if (subsidx < symnum) { //subscribe next
-            Serial.print(F("[Prs] Lets subscribe next ticker symbol: "));
-            //webSocket.sendTXT(REQ1 + symarray[subsidx].symbol + REQ2);
+            Serial.printf_P( PSTR("[Prs] Lets subscribe next ticker symbol: %s\n"), symarray[subsidx].symbol);
             char txbuff[strlen(REQ1) + 6 + strlen(REQ2) + 1];
             snprintf(txbuff, sizeof(txbuff), "%s%s%s", REQ1, symarray[subsidx].symbol, REQ2);
             webSocket.sendTXT(txbuff, strlen(txbuff));
@@ -255,45 +247,49 @@ void hbcheck() {
   for (byte i = 0; i < symnum; i++) {   //for all symbols
     if (symarray[i].hb != true) {
       ok = false;
-      Serial.print(F("[HBC] hb check failed, symbol = "));
-      Serial.println(symarray[i].symbol);
+      Serial.printf_P( PSTR("[HBC] HB check failed, symbol = %s\n"), symarray[i].symbol);
     }
     symarray[i].hb = false; //clear all HBs
   }
-  if (ok) {Serial.println(F("[HBC] hb check OK"));} else {
+  if (ok) {Serial.println(F("[HBC] HB check OK"));} else {
     //hbcheck failed
-    Serial.println(F("[HBC] hb check FAILED, reconnect websocket"));
+    Serial.println(F("[HBC] HB check FAILED, reconnect websocket"));
     reconnflag = true;  //set the flag, will do the reconnect in main loop
   }
 }
 
-void parsesymbols(String s) {
-  //lets count symbols and put them into symarray
-  int last = 0;
-  int pos = 0;
+void parsesymbols(const char * const s) {
+  //parse s to find all symbols separated by spaces
+  //results:
+  //symnum = count of symbols 
+  //put each symbol into symarray[symnum].symbol
+  //set for each symarray[symnum].hb = false
   symnum = 0;
-  while ((pos != -1) and (symnum <= 16) and (s.length() > 0)) {
-    pos = s.indexOf(' ', last);
-    if (pos == -1) { //last symbol
-      Serial.print(F("[Setup] last symbol: "));
-      Serial.println(s.substring(last));
-      //symarray[symnum].symbol = s.substring(last);
-      snprintf(symarray[symnum].symbol, sizeof(symarray[symnum].symbol), "%s", s.substring(last).c_str());
+  const char * pos_p = NULL;
+  const char * last_p = s;
+
+  do {
+    pos_p = strchr(last_p, ' ');    //try to find ' ' (=space)
+    if (pos_p == NULL) {            //not found?
+      //its the last one but check that its not empty
+      if (strlen(last_p) == SYMBOL_LEN) {
+        //it is the last symbol, lenght is valid
+        strncpy(symarray[symnum].symbol, last_p, SYMBOL_LEN);
+        symarray[symnum].hb = false;
+        symnum++;   
+      }      
     } else {
-      Serial.print(F("[Setup] add symbol: "));
-      Serial.println(s.substring(last, pos));
-      //symarray[symnum].symbol = s.substring(last, pos);
-      snprintf(symarray[symnum].symbol, sizeof(symarray[symnum].symbol), "%s", s.substring(last, pos).c_str());
-      last = pos + 1;
-    }
-    //symarray[symnum].symbol.toUpperCase();
-    strupr(symarray[symnum].symbol);
-    symarray[symnum].hb = false;
-    symnum++;
-  }
+      //its not he last symbol, space was found, but check it...
+      if ((pos_p - last_p) == SYMBOL_LEN) {
+        //correct length
+        strncpy(symarray[symnum].symbol, last_p, SYMBOL_LEN);
+        symarray[symnum].hb = false;
+        symnum++;
+      }
+      last_p = pos_p + 1; //set laspt_p behind the space found
+    }    
+  } while (pos_p != NULL);
 }
-
-
 
 void cfgbywm() {
   WiFiManager wifiManager;                                //Local intialization. Once its business is done, there is no need to keep it around
@@ -311,7 +307,6 @@ void cfgbywm() {
 
   wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
   wifiManager.setAPCallback(configModeCallback);          //flash led if in config mode
-  //add all your parameters here
   wifiManager.addParameter(&custom_symbol);
   wifiManager.addParameter(&custom_sbrightness);
   wifiManager.addParameter(&custom_symtime);
@@ -323,30 +318,32 @@ void cfgbywm() {
     ESP.reset();                                          //reset and try again, or maybe put it to deep sleep
   }
 
-  Serial.println(F("WiFi connected...yeey :)"));             //if you get here you have connected to the WiFi
+  Serial.println(F("WiFi connected... :)"));             //if you get here you have connected to the WiFi
   ld.print(F("  wifi  "), 1);
   if (DISP_AMOUNT == 2) {
     ld.print(F(" online "), 2);
   }
   
-  parsesymbols(String(custom_symbol.getValue()));
-
-  strncpy(cfg.symbols, custom_symbol.getValue(), sizeof(cfg.symbols));               //read updated parameters
-  cfg.brightness = atoi(custom_sbrightness.getValue());               //read updated parameters
-  cfg.cycle_time = atoi(custom_symtime.getValue());
-
-  if  ((cfg.brightness == 0) or (cfg.brightness > 16) or
-         (cfg.cycle_time == 0) or (cfg.cycle_time > 99) or (symnum == 0))
-  {
-    Serial.println(F("Parametters out of range, restart config portal"));
-    WiFi.disconnect();
-    ESP.reset(); 
-  }
-
-  cfg.brightness = cfg.brightness - 1;  //brightness range 0-15, but atoi return 0 when error so we made it 1-16 and here is the correction
-
-  //save the custom parameters to EEPROM
+  //params modified using WM, process them and save to EEPROM
   if (shouldSaveConfig) {
+    memset(cfg.symbols, '\0', sizeof(cfg.symbols));
+    strncpy(cfg.symbols, custom_symbol.getValue(), sizeof(cfg.symbols) - 1);              
+    strupr(cfg.symbols);    //uppercase symbols
+    cfg.brightness = atoi(custom_sbrightness.getValue());               
+    cfg.cycle_time = atoi(custom_symtime.getValue());
+    parsesymbols(cfg.symbols);    //needs to be also here because we are checking that symnum > 0 (that we have some valid symbols)
+
+    //check that everything is valid
+    if  ((cfg.brightness == 0) or (cfg.brightness > 16) or
+           (cfg.cycle_time == 0) or (cfg.cycle_time > 99) or (symnum == 0))
+    {
+      Serial.println(F("Parametters out of range, restart config portal"));
+      WiFi.disconnect();
+      ESP.reset(); 
+    }
+  
+    cfg.brightness = cfg.brightness - 1;  //brightness range 0-15, but atoi return 0 when error so we made it 1-16 and here is the correction
+      
     save_cfg_eeprom();
   }
 }
@@ -391,26 +388,23 @@ void setup() {
 
   cfgbywm();
 
-  //uint8_t i = 15 & String(sbrightness).toInt() ;  //max brightness is 15 so cap it to 15
+  parsesymbols(cfg.symbols);
+
   ld.setBright(cfg.brightness, ALL_MODULES);
-  Serial.print(F("Setting display brightness to: "));
-  Serial.println(cfg.brightness);
+  Serial.printf_P(PSTR("Setting display brightness to: %u\n"), cfg.brightness);
   Serial.print(F("[Setup] My IP: "));
   Serial.println(WiFi.localIP());
-  Serial.print(F("[Setup] symnum = "));
-  Serial.println(symnum);
+  Serial.printf_P(PSTR("[Setup] symnum = %u\n"), symnum);
   
   symticker.attach(cfg.cycle_time, nextsymidx);
-  Serial.print(F("[Setup] symbol cycle time: "));
-  Serial.println(cfg.cycle_time);
+  Serial.printf_P(PSTR("[Setup] symbol cycle time: %u\n"), cfg.cycle_time);
 
   //start the connection
   webSocket.beginSSL(APISRV, APIPORT, APIURL);  //, "#INSECURE#"
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
   hbticker.attach(HB_TIMEOUT, hbcheck);
-  Serial.print(F("[Setup] started HB check ticker, time: "));
-  Serial.println(HB_TIMEOUT);
+  Serial.printf_P(PSTR("[Setup] started HB check ticker, interval: %u\n"), HB_TIMEOUT);
 
   pinMode(CFGPORTAL_BUTTON, INPUT_PULLUP);  //button for reset of params
 }
@@ -464,11 +458,6 @@ void loop() {
       if (prevval != symarray[symidx].change) {
         prevval = symarray[symidx].change;
        // Serial.println(F("[LED] showing change"));
-        //String temp = String(symarray[symidx].change, 1);
-        //while (temp.length() < 6) {
-        //  temp = " " + temp;
-        //}
-        //temp = "C24" + temp;
         snprintf(dbuff, sizeof(dbuff), "C%#8.1f", symarray[symidx].change);
         ld.print(dbuff, DISP_AMOUNT);
       }
