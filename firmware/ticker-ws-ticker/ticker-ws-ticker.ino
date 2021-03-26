@@ -21,6 +21,7 @@ static const char CFGPORTAL_SSID[] = "Bgr ticker";
 static const char CFGPORTAL_PWD[] = "btcbtcbtc";
 
 static const char CFG_DEF_SYMBOLS[] = "BTCUSD";
+static const uint8_t CFG_SYMBOLS_LEN = 111;          //length of all symbols to show incl spaces = 16symbols = (15*7)+6 = 111characters
 static const uint8_t CFG_DEF_BRIGHTNESS = 8;
 static const uint8_t CFG_DEF_CYCLE_TIME = 3;
 
@@ -31,24 +32,29 @@ static const char REQ1[] = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"sy
 static const char REQ2[] = "\"}";
 static const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
 static const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
+
 static const uint8_t SYMBOL_LEN = 6;                 //length of each symbol (like BTCUSD) in characters
 
 static const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
-float price = -1;
-float prevval = -1;
-//String pays = "";
-bool clrflag = false;
-bool shouldSaveConfig  = false; //flag for saving data
-bool reconnflag = false;
-bool dispchng = false;
-int symidx, subsidx = 0;
-int prevsymidx = -1;
-int symnum = 0;
+static float price = -1;
+static float prevval = -1;
+static const float INSANE_PREVVAL = -1e999; //number which we mos tlikely never reach, used invalidate prevval and redraw display
+static bool clrflag = false;
+static bool shouldSaveConfig  = false; //flag for saving data
+static bool reconnflag = false;
+static bool dispchng = false;
+static int symidx, subsidx = 0;
+static int prevsymidx = -1;
+static const int PREVSYMIDX_NOREDRAW = -100;  //do not refresh display every time the loop pases, nothing subscribed and prevsimidx set to this value
+static int symnum = 0;
+
+static byte needdeci;
+static float temppr;
+static char dbuff[10]; //8 chars + 1decimal dot + zero terminator
 
 //array for ticker data
 struct  symboldata_t {
-  //String symbol;
   char symbol[SYMBOL_LEN + 1];
   long chanid;
   float price;
@@ -66,7 +72,7 @@ WebSocketsClient webSocket;
 BgrMax7seg ld = BgrMax7seg(SPI_SPEED, SPI_CSPIN, DISP_AMOUNT); //init display
 
 struct cfg_t {        
-  char symbols[130];
+  char symbols[CFG_SYMBOLS_LEN + 1];
   uint8_t brightness;
   uint8_t cycle_time;
   uint8_t checksum;
@@ -118,7 +124,7 @@ void rstwmcfg() {
 }
 
 void nextsymidx () {
-  if (prevval != -200) {prevval = -201;} //force redraw if not in connecting mode
+  prevval = INSANE_PREVVAL;   //to ensure it will redraw display
   if (dispchng == false) {
     dispchng = true;  //will display daily change
   } else {
@@ -243,15 +249,18 @@ bool parsepl(const char * payload, const size_t len) {
 }
 
 void hbcheck() {
-  bool ok = true;                       // for testing only
-  for (byte i = 0; i < symnum; i++) {   //for all symbols
+  bool ok = true;                       //initial value
+  for (byte i = 0; i < symnum; i++) {   //for all subscribed symbols
     if (symarray[i].hb != true) {
       ok = false;
       Serial.printf_P( PSTR("[HBC] HB check failed, symbol = %s\n"), symarray[i].symbol);
     }
-    symarray[i].hb = false; //clear all HBs
+    symarray[i].hb = false; //clear HBs
   }
-  if (ok) {Serial.println(F("[HBC] HB check OK"));} else {
+  if (ok) {
+    //all subscribed had valid HB, ok ti still true
+    Serial.println(F("[HBC] HB check OK"));
+  } else {
     //hbcheck failed
     Serial.println(F("[HBC] HB check FAILED, reconnect websocket"));
     reconnflag = true;  //set the flag, will do the reconnect in main loop
@@ -274,7 +283,8 @@ void parsesymbols(const char * const s) {
       //its the last one but check that its not empty
       if (strlen(last_p) == SYMBOL_LEN) {
         //it is the last symbol, lenght is valid
-        strncpy(symarray[symnum].symbol, last_p, SYMBOL_LEN);
+        memset(symarray[symnum].symbol, '\0', sizeof(symarray[symnum].symbol));  //.symbol defined as [SYMBOL_LEN + 1]
+        strncpy(symarray[symnum].symbol, last_p, sizeof(symarray[symnum].symbol) - 1);
         symarray[symnum].hb = false;
         symnum++;   
       }      
@@ -282,7 +292,8 @@ void parsesymbols(const char * const s) {
       //its not he last symbol, space was found, but check it...
       if ((pos_p - last_p) == SYMBOL_LEN) {
         //correct length
-        strncpy(symarray[symnum].symbol, last_p, SYMBOL_LEN);
+        memset(symarray[symnum].symbol, '\0', sizeof(symarray[symnum].symbol));  //.symbol defined as [SYMBOL_LEN + 1]
+        strncpy(symarray[symnum].symbol, last_p, sizeof(symarray[symnum].symbol) - 1);
         symarray[symnum].hb = false;
         symnum++;
       }
@@ -297,7 +308,7 @@ void cfgbywm() {
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
-  WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", cfg.symbols, 128);
+  WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", cfg.symbols, CFG_SYMBOLS_LEN);
   char sbr[4];
   itoa(cfg.brightness, sbr, 10);
   WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [1 - 16]", sbr, 2);
@@ -380,7 +391,8 @@ void setup() {
   if (!get_cfg_eeprom()) {
     //configuration in eeprom is not valid - we need to create default one
     Serial.println(F("EEPROM checksum invalid, creating default configuration"));
-    strncpy (cfg.symbols, CFG_DEF_SYMBOLS, sizeof(cfg.symbols));
+    memset(cfg.symbols, '\0', sizeof(cfg.symbols));
+    strncpy (cfg.symbols, CFG_DEF_SYMBOLS, sizeof(cfg.symbols) - 1);
     cfg.brightness = CFG_DEF_BRIGHTNESS;
     cfg.cycle_time = CFG_DEF_CYCLE_TIME;
     save_cfg_eeprom();
@@ -409,25 +421,18 @@ void setup() {
   pinMode(CFGPORTAL_BUTTON, INPUT_PULLUP);  //button for reset of params
 }
 
-//String temp;
-byte needdeci;
-float temppr;
 
-char dbuff[10]; //8 chars + 1decimal dot + zero terminator
+
 
 void loop() {
   webSocket.loop();
-   
+
+  //cfg reset button 
   if ((digitalRead(CFGPORTAL_BUTTON) == LOW) and (!rstticker.active())) {
     Serial.println(F("[Sys] clear settings button pressed, hold it for a while to reset Wifi settings"));
     rstticker.attach(CFGPORTAL_BUTTON_TIME, rstwmcfg);
   }
   
-//  if (pays != "") {
-//    parsepl();
-//  //  Serial.println(F("parsing"));
-//  }
-
   if (clrflag) {
     digitalWrite(LED_BUILTIN, LOW);
     ld.print(F("reconfig"), 1);
@@ -444,15 +449,16 @@ void loop() {
   }
 
   if (reconnflag) {
+    //reconnect ws now
     reconnflag = false;
     webSocket.disconnect();
     subsidx = 0;  //no symbols subscribed
     delay(1000);
-    webSocket.beginSSL(APISRV, APIPORT, APIURL);  //, "#INSECURE#"
+    webSocket.beginSSL(APISRV, APIPORT, APIURL);
     webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
   }
 
-  //display prizze
+  //display prizze or 24h change
   if (subsidx > 0) {  //if there is sth subscribed
     if (dispchng == true) {
       if (prevval != symarray[symidx].change) {
@@ -485,16 +491,17 @@ void loop() {
         snprintf(dbuff, sizeof(dbuff), " %s ", symarray[symidx].symbol);
         ld.print(dbuff, 1);
       }
-    prevsymidx = symidx;
+      prevsymidx = symidx;
     }
-  } else { //nothing subscribed, display message that trying connect
-    if (prevval != -200) { // send it to display only once, not everytime the loop passes
-      prevval = -200;
-      prevsymidx = -1;
+  } else { 
+    //nothing subscribed, display message that trying connect
+    if (prevsymidx != PREVSYMIDX_NOREDRAW) { // send it to display only once, not everytime the loop passes
+      //prevval = -200;
+      prevsymidx = PREVSYMIDX_NOREDRAW;
       Serial.println(F("[LED] showing cnct"));
-      ld.print("cnct api", 1);
+      ld.print(F("cnct api"), 1);
       if (DISP_AMOUNT == 2) {
-        ld.print("bitfinex", 2);
+        ld.print(F("bitfinex"), 2);
       }
     }
   }
