@@ -28,8 +28,7 @@ static const uint8_t CFG_DEF_CYCLE_TIME = 3;
 static const char APISRV[] = "api.bitfinex.com";
 static const uint16_t APIPORT = 443;
 static const char APIURL[] = "/ws/2";
-static const char REQ1[] = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t";
-static const char REQ2[] = "\"}";
+static const char REQ1[] PROGMEM = "{\"event\":\"subscribe\",\"channel\":\"ticker\",\"symbol\":\"t%s\"}";
 static const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
 static const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
@@ -221,8 +220,8 @@ bool parsepl(const char * payload, const size_t len) {
       if (jdoc["event"] == F("info")) {
         if (subsidx == 0) {
           Serial.printf_P( PSTR("[Prs] Got info, lets subscribe 1st ticker symbol: %s\n"), symarray[subsidx].symbol);
-          char txbuff[strlen(REQ1) + 6 + strlen(REQ2) + 1];
-          snprintf(txbuff, sizeof(txbuff), "%s%s%s", REQ1, symarray[subsidx].symbol, REQ2);
+          char txbuff[strlen(REQ1) + 6 + 1];
+          snprintf_P(txbuff, sizeof(txbuff), REQ1, symarray[subsidx].symbol);
           //Serial.println(txbuff);
           webSocket.sendTXT(txbuff, strlen(txbuff));
         }
@@ -233,8 +232,8 @@ bool parsepl(const char * payload, const size_t len) {
           subsidx++;  //move to next symbol in array
           if (subsidx < symnum) { //subscribe next
             Serial.printf_P( PSTR("[Prs] Lets subscribe next ticker symbol: %s\n"), symarray[subsidx].symbol);
-            char txbuff[strlen(REQ1) + 6 + strlen(REQ2) + 1];
-            snprintf(txbuff, sizeof(txbuff), "%s%s%s", REQ1, symarray[subsidx].symbol, REQ2);
+            char txbuff[strlen(REQ1) + 6 + 1];
+            snprintf_P(txbuff, sizeof(txbuff), REQ1, symarray[subsidx].symbol);
             webSocket.sendTXT(txbuff, strlen(txbuff));
           }
         } else {
@@ -420,9 +419,6 @@ void setup() {
 
   pinMode(CFGPORTAL_BUTTON, INPUT_PULLUP);  //button for reset of params
 }
-
-
-
 
 void loop() {
   webSocket.loop();
