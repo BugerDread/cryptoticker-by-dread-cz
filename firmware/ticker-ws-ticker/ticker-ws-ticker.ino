@@ -90,16 +90,14 @@ bool get_cfg_eeprom() {
   EEPROM.get(0, cfg);
   Serial.println(F("Loading config from EEPROM"));
   Serial.print(F("Checksum "));
-  if (cfg.checksum == cfg_checksum(cfg)) {
-    Serial.printf_P( PSTR("[VALID]: %u\n"), cfg.checksum);
-    Serial.printf_P( PSTR("Symbols: %s\n"), cfg.symbols);
-    Serial.printf_P( PSTR("Cycle time: %u\n"), cfg.cycle_time);
-    Serial.printf_P( PSTR("Brightness: %u\n"), cfg.brightness);
-    return true;
-  } else {
+  if (cfg.checksum != cfg_checksum(cfg)){
     Serial.println(F("[INVALID] !"));
     return false;
   }
+  Serial.printf_P( PSTR("[VALID]: %u\n"), cfg.checksum);
+  Serial.printf_P( PSTR("Symbols: %s\n"), cfg.symbols);
+  Serial.printf_P( PSTR("Cycle time: %u\n"), cfg.cycle_time);
+  Serial.printf_P( PSTR("Brightness: %u\n"), cfg.brightness); 
 }
 
 bool save_cfg_eeprom() {
