@@ -11,7 +11,6 @@ static const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
 static const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
 static const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
-static const uint8_t DISP_BRGTH = 8;                 //brightness of the display
 static const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
 
 static const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
@@ -36,9 +35,8 @@ static const uint8_t SYMBOL_LEN = 6;                 //length of each symbol (li
 
 static const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
-static float price = -1;
-static float prevval = -1;
 static const float INSANE_PREVVAL = -1e999; //number which we mos tlikely never reach, used invalidate prevval and redraw display
+static float prevval = INSANE_PREVVAL;
 static bool clrflag = false;
 static bool shouldSaveConfig  = false; //flag for saving data
 static bool reconnflag = false;
@@ -47,10 +45,6 @@ static int symidx, subsidx = 0;
 static int prevsymidx = -1;
 static const int PREVSYMIDX_NOREDRAW = -100;  //do not refresh display every time the loop pases, nothing subscribed and prevsimidx set to this value
 static int symnum = 0;
-
-static byte needdeci;
-static float temppr;
-static char dbuff[10]; //8 chars + 1decimal dot + zero terminator
 
 //array for ticker data
 struct  symboldata_t 
@@ -122,23 +116,26 @@ void rstwmcfg()
 {
     if (digitalRead(CFGPORTAL_BUTTON) == LOW) {  //if still pressed
         clrflag = true;
-    } else {                      //not pressed anymore
-        rstticker.detach();
-    }
+        return;
+    } 
+    //not pressed anymore
+    rstticker.detach();
 }
 
 void nextsymidx() 
 {
-    prevval = INSANE_PREVVAL;   //to ensure it will redraw display
-    if (dispchng == false) {
-        dispchng = true;  //will display daily change
-    } else {
-        //move to next symbol
-        dispchng = false;
-        symidx++;
-        if (symidx >= subsidx) {
-            symidx = 0;
-        }
+    prevval = INSANE_PREVVAL;         //change prevval to insane value to ensure it will redraw display
+    
+    if (dispchng == false) {          //are we ahowing 24h change?
+        dispchng = true;              //no, so lets set flag to display it
+        return;                       //we are done
+    } 
+    
+    //move to next symbol if we already show change
+    dispchng = false;                 //want to show the prizzeee first
+    symidx++;                         //move to next symbol 
+    if (symidx >= subsidx) {          //go to the 1st symbol when we are out of range
+        symidx = 0;
     }
 }
 
@@ -236,14 +233,13 @@ bool parsepl(const char * payload, const size_t len)
         }
         return true;                                            //we are done
     }
-    
     Serial.println(F("[Prs] ERROR, unknown data"));
     return false;
 }
 
 void hbcheck()
 {
-    for (byte i = 0; i < symnum; i++) {   //for all subscribed symbols check hb flag
+    for (byte i = 0; i < symnum; i++) {   //for all symbols check hb flag
         if (symarray[i].hb != true) {
             Serial.printf_P( PSTR("[HBC] HB check failed, symbol = %s, reconnect websocket\n"), symarray[i].symbol);
             reconnflag = true;  //set the flag, will do the reconnect in main loop
@@ -251,7 +247,6 @@ void hbcheck()
         }
         symarray[i].hb = false; //and clear HBs so we can check next time that we got update / hb for each
     }
-    
     Serial.println(F("[HBC] HB check OK"));
 }
 
@@ -268,6 +263,7 @@ void parsesymbols(const char * const s)
   
     do {                                                                                        
         pos_p = strchr(last_p, ' ');    //try to find ' ' (=space)
+        
         if (((pos_p != NULL) and ((pos_p - last_p) == SYMBOL_LEN))                              //found symbol of correct length
                 or ((pos_p == NULL) and (strlen(last_p) == SYMBOL_LEN))) {                      //found last symbol of correct length
             memset(symarray[symnum].symbol, '\0', sizeof(symarray[symnum].symbol));             //.symbol defined as [SYMBOL_LEN + 1]
@@ -279,7 +275,6 @@ void parsesymbols(const char * const s)
         if (pos_p != NULL) {
             last_p = pos_p + 1; //set laspt_p behind the space found
         }
-           
     } while (pos_p != NULL);
 }
 
@@ -331,7 +326,6 @@ void cfgbywm()
             WiFi.disconnect();
             ESP.reset(); 
         }
-      
         cfg.brightness = cfg.brightness - 1;  //brightness range 0-15, but atoi return 0 when error so we made it 1-16 and here is the correction
         save_cfg_eeprom();
     }
@@ -408,7 +402,7 @@ void setup()
   
     /* init displays and set the brightness min:1, max:15 */
     ld.init();
-    ld.setBright(DISP_BRGTH, ALL_MODULES);
+    ld.setBright(CFG_DEF_BRIGHTNESS, ALL_MODULES);
     ld.print(F("dread.cz "), 1);
     if (DISP_AMOUNT == 2) {
         ld.print(F(" ticker "), 2);
@@ -456,24 +450,23 @@ void loop()
     check_reconnect_flag();
   
     //display
+    static char dbuff[10]; //8 chars + 1decimal dot + zero terminator = thats our buffer
+    
     if (subsidx > 0) {                                                            //if there is sth subscribed
         if ((dispchng == true) and (prevval != symarray[symidx].change)) {        //if we should display 24h change and the value changed
             prevval = symarray[symidx].change;                                    //remember that value
             // Serial.println(F("[LED] showing change"));
             snprintf(dbuff, sizeof(dbuff), "C%#8.1f", symarray[symidx].change);
             ld.print(dbuff, DISP_AMOUNT);
+            
         } else if ((dispchng == false) and (symarray[symidx].price != prevval)) { //if we should display prizzee and prizzee changed
             //  Serial.println(F("[LED] showing price"));
-            prevval = symarray[symidx].price;                                     //remember that value
-            needdeci = 0;                                                         //lets find how many decimal places we need
-            temppr = prevval;
-            while ((temppr < 100) and (needdeci < 7)) {                           //we want to display decimals only for for numbers <100
-                needdeci ++;                                                      //and we want more decimals for small numbers
-                temppr = temppr * 10;
-            }
-            //ld.print(String(prevval, needdeci), DISP_AMOUNT);                   //print needdeci decimal places
-            snprintf(dbuff, sizeof(dbuff), "%#.*f", needdeci, symarray[symidx].price);
+            int8_t decimals = 3 - log10(symarray[symidx].price);                  //3 valid decimals
+            if (decimals < 0) decimals = 0;                                       //but limit - we cant have negative decimal count
+            if (decimals > 7) decimals = 7;                                       //and we have only 8 digit display = max 7 decimals
+            snprintf(dbuff, sizeof(dbuff), "%#.*f", decimals, symarray[symidx].price);
             ld.print(dbuff, DISP_AMOUNT);
+            prevval = symarray[symidx].price;                                     //remember that value
         }
         
         if (symidx != prevsymidx) {                                               //symbol changed, display it
@@ -484,7 +477,6 @@ void loop()
                 ld.print(dbuff, 1);
             }
         }
-        
     } else { 
         //nothing subscibed - show cnct api;
         show_cnct_api();
