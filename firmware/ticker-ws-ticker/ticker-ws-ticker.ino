@@ -233,12 +233,15 @@ bool parsepl(const char * payload, const size_t len)
         }
         return true;                                            //we are done
     }
-    Serial.println(F("[Prs] ERROR, unknown data"));
+    Serial.print(F("[Prs] ERROR, unknown data: "));
+    Serial.println(payload);
     return false;
 }
 
 void hbcheck()
 {
+    //this checks every HB_TIMEOUT seconds if we have valid HB for all symbols (subscribed or not)
+    //if not trigger WS reconnect => nonexistent symbol in config will trigger reconnect again and again
     for (byte i = 0; i < symnum; i++) {   //for all symbols check hb flag
         if (symarray[i].hb != true) {
             Serial.printf_P( PSTR("[HBC] HB check failed, symbol = %s, reconnect websocket\n"), symarray[i].symbol);
