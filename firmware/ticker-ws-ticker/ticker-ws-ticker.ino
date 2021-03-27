@@ -198,7 +198,7 @@ bool parsepl(const char * payload, const size_t len) {
         if (((jdoc[1][5]) != nullptr) and (jdoc[1][6] != nullptr)) {  //its prize so update it incl 24hr change
           symarray[i].price = jdoc[1][6]; 
           symarray[i].change = (float)(jdoc[1][5]) * 100.0;
-          } 
+        } 
         symarray[i].hb = true;                                  //we need to set this flag in case of price update and also hb
         return true;                                            //were done
       }
@@ -232,22 +232,16 @@ bool parsepl(const char * payload, const size_t len) {
 }
 
 void hbcheck() {
-  bool ok = true;                       //initial value
-  for (byte i = 0; i < symnum; i++) {   //for all subscribed symbols
+  for (byte i = 0; i < symnum; i++) {   //for all subscribed symbols check hb flag
     if (symarray[i].hb != true) {
-      ok = false;
-      Serial.printf_P( PSTR("[HBC] HB check failed, symbol = %s\n"), symarray[i].symbol);
+      Serial.printf_P( PSTR("[HBC] HB check failed, symbol = %s, reconnect websocket\n"), symarray[i].symbol);
+      reconnflag = true;  //set the flag, will do the reconnect in main loop
+      return; //makes no sense to continue if one failed found
     }
-    symarray[i].hb = false; //clear HBs
+    symarray[i].hb = false; //and clear HBs so we can check next time that we got update / hb for each
   }
-  if (ok) {
-    //all subscribed had valid HB, ok ti still true
-    Serial.println(F("[HBC] HB check OK"));
-  } else {
-    //hbcheck failed
-    Serial.println(F("[HBC] HB check FAILED, reconnect websocket"));
-    reconnflag = true;  //set the flag, will do the reconnect in main loop
-  }
+  
+  Serial.println(F("[HBC] HB check OK"));
 }
 
 void parsesymbols(const char * const s) {
