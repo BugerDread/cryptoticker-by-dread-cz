@@ -103,13 +103,12 @@ bool get_cfg_eeprom() {
 bool save_cfg_eeprom() {
   cfg.checksum = cfg_checksum(cfg);
   EEPROM.put(0, cfg);
-  if (EEPROM.commit()) {
-    Serial.println(F("Config saved to EEPROM"));
-    return true;
-  } else {
+  if (!EEPROM.commit()) {
     Serial.println(F("EEPROM error, cant save config"));
     return false;
   }
+  Serial.println(F("Config saved to EEPROM"));
+  return true;   
 }
 
 void rstwmcfg() {
@@ -138,7 +137,7 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   if (DISP_AMOUNT == 2) {
     ld.print(F(" config "), 1);
   }
-  ld.print(F("192.168.4.1"), DISP_AMOUNT);  //show on 1st display if we have only one, show on 2nd if we have two
+  ld.print(F("192.168.4.1"), DISP_AMOUNT);  //show IP of captive portal on 1st display if we have only one, show on 2nd if we have two
 }
 
 //callback notifying us of the need to save config
@@ -172,77 +171,64 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t len) {
   }
 }
 
-bool parsepl(const char * payload, const size_t len) {
-  DeserializationError error = deserializeJson(jdoc, payload, len);   //deserialize
-  //pays = "";
-  // Test if parsing succeeds.
-  if (!error) {
-    //   Serial.println(F("[Prs] its an array"));
-    //float tp = 0.0;
-    bool newdata = false;
-    bool temphb = false;
-    if (jdoc[1] == "hb") {  //its a heartbeat
-      //  Serial.println(F("[Prs] Heartbeat!"));
-      temphb = true;
-    } else if (jdoc[1][6] != nullptr) { // new prize
-      newdata = true;
-      //Serial.print("[Prs] Update, price: ");
-      //tp = root[1][6];
-      //Serial.print((float)jdoc[1][6]);
-      //Serial.print(", change: ");
-      //Serial.println(100*(float)jdoc[1][5]);
-    } 
+void subscribe_symbol(const char * const s) {
+  char txbuff[strlen(REQ1) + 6 + 1];
+  snprintf_P(txbuff, sizeof(txbuff), REQ1, s);
+  //Serial.println(txbuff);
+  webSocket.sendTXT(txbuff, strlen(txbuff));
+}
 
-    //[CHANNEL_ID,[BID,BID_SIZE,ASK,ASK_SIZE,DAILY_CHANGE,DAILY_CHANGE_PERC,LAST_PRICE,VOLUME,HIGH,LOW]]
-    
-    //find the symbol in array and set the prize if we have some prizze
-    if ((newdata == true) or (temphb == true)) {  //if we have prize or hb
-      for (byte i = 0; i < subsidx; i++) { //symnum -> subsidx   iterate the array of subscribed
-        if (symarray[i].chanid == jdoc[0]) {  //we found it
-          if (newdata == true) {
-            symarray[i].price = jdoc[1][6]; 
-            symarray[i].change = (float)(jdoc[1][5]) * 100.0;
-            //symarray[i].change *= 100;
-            }
-          //if (temphb == true) 
-          symarray[i].hb = true; 
-          // Serial.print(F("[Prs] array updated, i = "));
-          // Serial.println(i);
-          break;
-        }
-      }
-      return true;
-    } else {
-      // its not HB or price update
-      // check if its a subscribe event info
-      if (jdoc["event"] == F("info")) {
-        if (subsidx == 0) {
-          Serial.printf_P( PSTR("[Prs] Got info, lets subscribe 1st ticker symbol: %s\n"), symarray[subsidx].symbol);
-          char txbuff[strlen(REQ1) + 6 + 1];
-          snprintf_P(txbuff, sizeof(txbuff), REQ1, symarray[subsidx].symbol);
-          //Serial.println(txbuff);
-          webSocket.sendTXT(txbuff, strlen(txbuff));
-        }
-      } else if (jdoc["event"] == F("subscribed"))  {
-        if (jdoc["chanId"] != false) {
-          symarray[subsidx].chanid = jdoc["chanId"];
-          Serial.printf_P( PSTR("[Prs] Ticker subscribe success, channel id: %u\n"), symarray[subsidx].chanid);
-          subsidx++;  //move to next symbol in array
-          if (subsidx < symnum) { //subscribe next
-            Serial.printf_P( PSTR("[Prs] Lets subscribe next ticker symbol: %s\n"), symarray[subsidx].symbol);
-            char txbuff[strlen(REQ1) + 6 + 1];
-            snprintf_P(txbuff, sizeof(txbuff), REQ1, symarray[subsidx].symbol);
-            webSocket.sendTXT(txbuff, strlen(txbuff));
-          }
-        } else {
-          Serial.println(F("[Prs] Ticker subscribe failed"));
-        }
-      }
-      return true;
-    }
-  } else {      //deserializing error 
+bool parsepl(const char * payload, const size_t len) {
+  //[CHANNEL_ID,[BID,BID_SIZE,ASK,ASK_SIZE,DAILY_CHANGE,DAILY_CHANGE_PERC,LAST_PRICE,VOLUME,HIGH,LOW]] - price update
+  //[CHANNEL_ID, "hb"] - for heartbeat
+  //=> if (jdoc[1] == "hb") {       //its a heartbeat
+  //=> if (jdoc[1][6] != nullptr) { // new prize
+  
+  DeserializationError error = deserializeJson(jdoc, payload, len);   //deserialize
+  // Test if parsing succeeds
+  if (error) {
+    Serial.println(F("[Prs] deserialization error"));
     return false;
   }
+
+  //check if its a json with price update or heartbeat
+  if ((jdoc[0] != nullptr) and (((jdoc[1][6] != nullptr) and (jdoc[1][5] != nullptr)) or (jdoc[1] == "hb"))) {                 //if we have prize or hb
+    for (byte i = 0; i < subsidx; i++) {                              //iterate the array of subscribed
+      if (symarray[i].chanid == jdoc[0]) {                            //we found it
+        if (((jdoc[1][5]) != nullptr) and (jdoc[1][6] != nullptr)) {  //its prize so update it incl 24hr change
+          symarray[i].price = jdoc[1][6]; 
+          symarray[i].change = (float)(jdoc[1][5]) * 100.0;
+          } 
+        symarray[i].hb = true;                                  //we need to set this flag in case of price update and also hb
+        return true;                                            //were done
+      }
+    }
+    Serial.println(F("[Prs] ERROR - we most probaly got prize update for symbol we never subscribed"));
+    return false;                                               //we are also done but not found the ID
+  }
+
+  //check if its initial server info
+  if ((jdoc["event"] == F("info")) and (subsidx == 0)) {
+    //yes it is initial server subscribe info and we have nothing subscribed
+    Serial.printf_P( PSTR("[Prs] Got info, lets subscribe 1st ticker symbol: %s\n"), symarray[subsidx].symbol);
+    subscribe_symbol(symarray[subsidx].symbol);
+    return true;                                              //we are done
+  } 
+  
+  if ((jdoc["event"] == F("subscribed")) and (jdoc["chanId"] != false)) {
+    //ist a channel subscribe message
+    symarray[subsidx].chanid = jdoc["chanId"];                                                              //remember it chanId for last subscribed symbol
+    Serial.printf_P( PSTR("[Prs] Ticker subscribe success, channel id: %u\n"), symarray[subsidx].chanid);
+    subsidx++;                                                                                              //move to next symbol
+    if (subsidx < symnum) {                                                                                 //subscribe next if there is some more to subscribe
+      Serial.printf_P( PSTR("[Prs] Lets subscribe next ticker symbol: %s\n"), symarray[subsidx].symbol);
+      subscribe_symbol(symarray[subsidx].symbol);
+    }
+    return true;                                            //we are done
+  }
+  
+  Serial.println(F("[Prs] ERROR, unknown data"));
+  return false;
 }
 
 void hbcheck() {
@@ -356,6 +342,53 @@ void cfgbywm() {
   }
 }
 
+void check_cfg_reset_button() {
+  //cfg reset button 
+  if ((digitalRead(CFGPORTAL_BUTTON) == LOW) and (!rstticker.active())) {
+    Serial.println(F("[Sys] clear settings button pressed, hold it for a while to reset Wifi settings"));
+    rstticker.attach(CFGPORTAL_BUTTON_TIME, rstwmcfg);
+  }
+  
+  if (clrflag) {
+    digitalWrite(LED_BUILTIN, LOW);
+    ld.print(F("reconfig"), 1);
+    if (DISP_AMOUNT == 2) {
+      ld.print(F(" button "), 2);
+    }
+    webSocket.disconnect();
+    WiFi.disconnect();
+    //WiFiManager wifiManager;
+    //wifiManager.resetSettings();
+    delay(3000);
+    digitalWrite(LED_BUILTIN, HIGH);
+    ESP.restart();
+  }
+}
+
+void check_reconnect_flag() {
+  if (reconnflag) {
+    //reconnect ws now
+    reconnflag = false;
+    webSocket.disconnect();
+    subsidx = 0;  //no symbols subscribed
+    delay(1000);
+    webSocket.beginSSL(APISRV, APIPORT, APIURL);
+    webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
+  }
+}
+
+void show_cnct_api() {
+  //nothing subscribed, display message that trying connect
+  if (prevsymidx != PREVSYMIDX_NOREDRAW) { // send it to display only once, not everytime the loop passes
+    prevsymidx = PREVSYMIDX_NOREDRAW;
+    Serial.println(F("[LED] showing cnct"));
+    ld.print(F("cnct api"), 1);
+    if (DISP_AMOUNT == 2) {
+      ld.print(F("bitfinex"), 2);
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay (1000);
@@ -421,36 +454,9 @@ void setup() {
 void loop() {
   webSocket.loop();
 
-  //cfg reset button 
-  if ((digitalRead(CFGPORTAL_BUTTON) == LOW) and (!rstticker.active())) {
-    Serial.println(F("[Sys] clear settings button pressed, hold it for a while to reset Wifi settings"));
-    rstticker.attach(CFGPORTAL_BUTTON_TIME, rstwmcfg);
-  }
-  
-  if (clrflag) {
-    digitalWrite(LED_BUILTIN, LOW);
-    ld.print(F("reconfig"), 1);
-    if (DISP_AMOUNT == 2) {
-      ld.print(F(" button "), 2);
-    }
-    webSocket.disconnect();
-    WiFi.disconnect();
-    //WiFiManager wifiManager;
-    //wifiManager.resetSettings();
-    delay(3000);
-    digitalWrite(LED_BUILTIN, HIGH);
-    ESP.restart();
-  }
+  check_cfg_reset_button();
 
-  if (reconnflag) {
-    //reconnect ws now
-    reconnflag = false;
-    webSocket.disconnect();
-    subsidx = 0;  //no symbols subscribed
-    delay(1000);
-    webSocket.beginSSL(APISRV, APIPORT, APIURL);
-    webSocket.setReconnectInterval(WS_RECONNECT_INTERVAL);
-  }
+  check_reconnect_flag();
 
   //display prizze or 24h change
   if (subsidx > 0) {  //if there is sth subscribed
@@ -488,15 +494,7 @@ void loop() {
       prevsymidx = symidx;
     }
   } else { 
-    //nothing subscribed, display message that trying connect
-    if (prevsymidx != PREVSYMIDX_NOREDRAW) { // send it to display only once, not everytime the loop passes
-      //prevval = -200;
-      prevsymidx = PREVSYMIDX_NOREDRAW;
-      Serial.println(F("[LED] showing cnct"));
-      ld.print(F("cnct api"), 1);
-      if (DISP_AMOUNT == 2) {
-        ld.print(F("bitfinex"), 2);
-      }
-    }
+    //nothing subscibed - show cnct api;
+    show_cnct_api();
   }
 }
