@@ -9,12 +9,12 @@
 // configuration
 static const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
-static const uint32_t SPI_SPEED = 8000000;           //SPI@8MHZ
+static const uint32_t SPI_SPEED = 1000000;           //SPI@1MHz (8MHZ cause problems when usb voltage lower)
 static const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
-static const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
+static const uint8_t DISP_AMOUNT = 2;                //number of max 7seg modules connected
 
 static const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
-static const uint8_t CFGPORTAL_BUTTON = 0;                 //0 for default FLASH button on nodeMCU board
+static const uint8_t CFGPORTAL_BUTTON = 12;                 //0 for default FLASH button on nodeMCU board
 static const uint8_t CFGPORTAL_BUTTON_TIME = 5;                   //time [s] to hold CFGPORTAL_BUTTON to activate cfg portal
 static const char CFGPORTAL_SSID[] = "Bgr ticker";
 static const char CFGPORTAL_PWD[] = "btcbtcbtc";
@@ -35,7 +35,7 @@ static const uint8_t SYMBOL_LEN = 6;                 //length of each symbol (li
 
 static const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
-static const float INSANE_PREVVAL = -1e999; //number which we mos tlikely never reach, used invalidate prevval and redraw display
+static const float INSANE_PREVVAL = -1e999; //number which we most likely never reach, used to invalidate prevval and redraw display
 static float prevval = INSANE_PREVVAL;
 static bool clrflag = false;
 static bool shouldSaveConfig  = false; //flag for saving data
@@ -410,7 +410,8 @@ void setup()
     if (DISP_AMOUNT == 2) {
         ld.print(F(" ticker "), 2);
     }
-  
+    delay(1000);
+    
     //get configuration from eeprom
     EEPROM.begin(512);
     if (!get_cfg_eeprom()) {
@@ -467,7 +468,7 @@ void loop()
             int8_t decimals = 3 - log10(symarray[symidx].price);                  //3 valid decimals
             if (decimals < 0) decimals = 0;                                       //but limit - we cant have negative decimal count
             if (decimals > 7) decimals = 7;                                       //and we have only 8 digit display = max 7 decimals
-            snprintf(dbuff, sizeof(dbuff), "%#.*f", decimals, symarray[symidx].price);
+            snprintf(dbuff, sizeof(dbuff), "%.*f", decimals, symarray[symidx].price);
             ld.print(dbuff, DISP_AMOUNT);
             prevval = symarray[symidx].price;                                     //remember that value
         }
