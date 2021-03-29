@@ -11,18 +11,23 @@ static const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
 static const uint32_t SPI_SPEED = 1000000;           //SPI@1MHz (8MHZ cause problems when usb voltage lower)
 static const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
-static const uint8_t DISP_AMOUNT = 2;                //number of max 7seg modules connected
+static const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
 
 static const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
 static const uint8_t CFGPORTAL_BUTTON = 12;                 //0 for default FLASH button on nodeMCU board
 static const uint8_t CFGPORTAL_BUTTON_TIME = 5;                   //time [s] to hold CFGPORTAL_BUTTON to activate cfg portal
 static const char CFGPORTAL_SSID[] = "Bgr ticker";
 static const char CFGPORTAL_PWD[] = "btcbtcbtc";
+static const char CFGPORTAL_CH24CHBX_VALUE[] = "X";   //value returned by the checkbox when checked
+static const char HTML_CHECKBOX[] PROGMEM= "type=\"checkbox\"";
+static const char HTML_CHECKBOX_CHECKED[] PROGMEM= "type=\"checkbox\" checked=\"true\"";
 
 static const char CFG_DEF_SYMBOLS[] = "BTCUSD";
 static const uint8_t CFG_SYMBOLS_LEN = 111;          //length of all symbols to show incl spaces = 16symbols = (15*7)+6 = 111characters
 static const uint8_t CFG_DEF_BRIGHTNESS = 8;
 static const uint8_t CFG_DEF_CYCLE_TIME = 3;
+static const bool CFG_DEF_SHOW_CH24 = true;
+static const uint8_t CFG_CHECKCUM_MAGIC = 42;       //some magic constant to make checksum invalif if data full of 0s
 
 static const char APISRV[] = "api.bitfinex.com";
 static const uint16_t APIPORT = 443;
@@ -70,24 +75,26 @@ struct cfg_t
     char symbols[CFG_SYMBOLS_LEN + 1];
     int8_t brightness;
     int8_t cycle_time;
+    bool show_ch24;
     uint8_t checksum;
 } cfg;
 
 uint8_t cfg_checksum()                                                                  //PROTOZE structure padding ! nepocitej to jako kokot :D proc nefunguje kdyz se do cfg_t pridat int16 ?
 {
-    uint8_t checksum = 42;                                                              //init (magic) value, to make chcecksum of config full of 0s invalid
+    uint8_t checksum = CFG_CHECKCUM_MAGIC;                                             //init (magic) value, to make chcecksum of config full of 0s invalid
     for (size_t i = 0; i <= sizeof(cfg.symbols); i++) {                                //sum all chars in cfg.symbols
       checksum += cfg.symbols[i];
     }
     checksum += cfg.brightness;                                                         //add both integers
     checksum += cfg.cycle_time;
+    if (cfg.show_ch24) {
+      checksum++;
+    }
     return checksum;                                                                    //and here is the checksum
 }
 
-bool get_cfg_eeprom()
+bool show_cfg_check_checksum()
 {
-    EEPROM.get(0, cfg);
-    Serial.println(F("Loading config from EEPROM"));
     Serial.print(F("Checksum "));
     if (cfg.checksum != cfg_checksum()) {
         Serial.println(F("[INVALID] !"));
@@ -97,18 +104,28 @@ bool get_cfg_eeprom()
     Serial.printf_P( PSTR("Symbols: %s\n"), cfg.symbols);
     Serial.printf_P( PSTR("Cycle time: %u\n"), cfg.cycle_time);
     Serial.printf_P( PSTR("Brightness: %u\n"), cfg.brightness); 
-    return true;
+    Serial.printf_P( PSTR("Show 24hr change: %d\n"), cfg.show_ch24);
+    return true; 
+}
+
+bool get_cfg_eeprom()
+{
+    Serial.println(F("Loading cfg from EEPROM"));
+    EEPROM.get(0, cfg);
+    return show_cfg_check_checksum();
 }
 
 bool save_cfg_eeprom()
 {
+    Serial.println(F("Saving cfg to EEPROM"));
     cfg.checksum = cfg_checksum();
+    show_cfg_check_checksum();
     EEPROM.put(0, cfg);
     if (!EEPROM.commit()) {
-        Serial.println(F("EEPROM error, cant save config"));
+        Serial.println(F("EEPROM error, cant save cfg"));
         return false;
     }
-    Serial.println(F("Config saved to EEPROM"));
+    Serial.println(F("Cfg saved to EEPROM"));
     return true;   
 }
 
@@ -126,8 +143,8 @@ void nextsymidx()
 {
     prevval = INSANE_PREVVAL;         //change prevval to insane value to ensure it will redraw display
     
-    if (dispchng == false) {          //are we ahowing 24h change?
-        dispchng = true;              //no, so lets set flag to display it
+    if ((cfg.show_ch24 == true) and (dispchng == false)) {          //should we show and are we showing 24h change?
+        dispchng = true;              //yes we should show it but we are not showing it now, so lets set flag to show it
         return;                       //we are done
     } 
     
@@ -285,21 +302,30 @@ void cfgbywm()
 {
     char sbr[3];
     char sctime[3];
+    size_t checkbox_len;
+
+    checkbox_len = cfg.show_ch24 ? strlen_P(HTML_CHECKBOX_CHECKED) : strlen_P(HTML_CHECKBOX);
+    char checkbox_buf[checkbox_len + 1];
+    cfg.show_ch24 ? strcpy_P(checkbox_buf, HTML_CHECKBOX_CHECKED) : strcpy_P(checkbox_buf, HTML_CHECKBOX);
+
     itoa(cfg.brightness + 1, sbr, 10);    //internally is 0-15, wee need to make it 1-16 during setup
     itoa(cfg.cycle_time, sctime, 10);
     WiFiManager wifiManager;                                //Local intialization. Once its business is done, there is no need to keep it around
   
     // The extra parameters to be configured (can be either global or just in the setup). After connecting, parameter.getValue() will get you the configured value, id/name placeholder/prompt default length
-    WiFiManagerParameter custom_symbol("symbol", "bitfinex symbol(s)", cfg.symbols, CFG_SYMBOLS_LEN);
-    WiFiManagerParameter custom_sbrightness("sbrightness", "display brightness [1 - 16]", sbr, 2);
-    WiFiManagerParameter custom_symtime("symtime", "time to cycle symbols", sctime, 2);
+    WiFiManagerParameter custom_symbol("symbol", "Bitfinex symbol(s)", cfg.symbols, CFG_SYMBOLS_LEN);
+    WiFiManagerParameter custom_sbrightness("sbrightness", "Display brightness [1 - 16]", sbr, 2);
+    WiFiManagerParameter custom_symtime("symtime", "Interval to cycle symbols", sctime, 2);
+     
+    WiFiManagerParameter custom_ch24_checkbox("ch24_chbx", "Show 24hr change", CFGPORTAL_CH24CHBX_VALUE, strlen(CFGPORTAL_CH24CHBX_VALUE), checkbox_buf, WFM_LABEL_BEFORE);
   
     wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
     wifiManager.setAPCallback(configModeCallback);          //flash led if in config mode
     wifiManager.addParameter(&custom_symbol);
     wifiManager.addParameter(&custom_sbrightness);
     wifiManager.addParameter(&custom_symtime);
-    //wifiManager.setMinimumSignalQuality();                //set minimu quality of signal so it ignores AP's under that quality, defaults to 8%
+    wifiManager.addParameter(&custom_ch24_checkbox);
+    //wifiManager.setMinimumSignalQuality();                //set minimum quality of signal so it ignores AP's under that quality, defaults to 8%
     wifiManager.setTimeout(CFGPORTAL_TIMEOUT);                          //sets timeout until configuration portal gets turned off useful to make it all retry or go to sleep in seconds
   
     if (!wifiManager.autoConnect(CFGPORTAL_SSID, CFGPORTAL_PWD)) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
@@ -321,6 +347,7 @@ void cfgbywm()
         cfg.brightness = atoi(custom_sbrightness.getValue());               
         cfg.cycle_time = atoi(custom_symtime.getValue());
         parsesymbols(cfg.symbols);    //needs to be also here because we are checking that symnum > 0 (that we have some valid symbols)
+        cfg.show_ch24 = (strcmp(custom_ch24_checkbox.getValue(), CFGPORTAL_CH24CHBX_VALUE) == 0);
   
         //check that everything is valid
         if  ((cfg.brightness <= 0) or (cfg.brightness > 16)
@@ -421,6 +448,7 @@ void setup()
         strncpy (cfg.symbols, CFG_DEF_SYMBOLS, sizeof(cfg.symbols) - 1);
         cfg.brightness = CFG_DEF_BRIGHTNESS;
         cfg.cycle_time = CFG_DEF_CYCLE_TIME;
+        cfg.show_ch24 = CFG_DEF_SHOW_CH24;
         save_cfg_eeprom();
     }
   
