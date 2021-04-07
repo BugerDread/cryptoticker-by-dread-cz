@@ -11,7 +11,9 @@ static const char COMPILE_DATE[] PROGMEM = __DATE__ " " __TIME__;
 
 static const uint32_t SPI_SPEED = 1000000;           //SPI@1MHz (8MHZ cause problems when usb voltage lower)
 static const uint8_t SPI_CSPIN = 15;                  //SPI CS - may vary in older versions
-static const uint8_t DISP_AMOUNT = 1;                //number of max 7seg modules connected
+static const uint8_t DISP_AMOUNT = 2;                //number of max 7seg modules connected
+static const uint8_t SYMBOL_MAX_LEN = 10;                 //max length of each symbol (like BTCUSD) in characters
+static const uint8_t SYMBOL_MAX_COUNT = 16; 
 
 static const uint8_t CFGPORTAL_TIMEOUT = 120;        //timeout for config portal in seconds
 static const uint8_t CFGPORTAL_BUTTON = 12;                 //0 for default FLASH button on nodeMCU board
@@ -19,11 +21,11 @@ static const uint8_t CFGPORTAL_BUTTON_TIME = 5;                   //time [s] to 
 static const char CFGPORTAL_SSID[] = "Bgr ticker";
 static const char CFGPORTAL_PWD[] = "btcbtcbtc";
 static const char CFGPORTAL_CH24CHBX_VALUE[] = "X";   //value returned by the checkbox when checked
-static const char HTML_CHECKBOX[] PROGMEM= "type=\"checkbox\"";
-static const char HTML_CHECKBOX_CHECKED[] PROGMEM= "type=\"checkbox\" checked=\"true\"";
+static const char HTML_CHECKBOX[] PROGMEM = "type=\"checkbox\"";
+static const char HTML_CHECKBOX_CHECKED[] PROGMEM = "type=\"checkbox\" checked=\"true\"";
 
 static const char CFG_DEF_SYMBOLS[] = "BTCUSD";
-static const uint8_t CFG_SYMBOLS_LEN = 111;          //length of all symbols to show incl spaces = 16symbols = (15*7)+6 = 111characters
+static const uint8_t CFG_SYMBOLS_LEN = ((SYMBOL_MAX_LEN + 1) * (SYMBOL_MAX_COUNT - 1)) + SYMBOL_MAX_LEN + 1;          //length of all symbols to show incl spaces = 16symbols = (15*7)+6 = 111characters
 static const uint8_t CFG_DEF_BRIGHTNESS = 8;
 static const uint8_t CFG_DEF_CYCLE_TIME = 3;
 static const bool CFG_DEF_SHOW_CH24 = true;
@@ -36,7 +38,7 @@ static const char REQ1[] PROGMEM = "{\"event\":\"subscribe\",\"channel\":\"ticke
 static const uint16_t WS_RECONNECT_INTERVAL = 5000;  // websocket reconnec interval
 static const uint8_t HB_TIMEOUT = 30;                //heartbeat interval in seconds
 
-static const uint8_t SYMBOL_LEN = 6;                 //length of each symbol (like BTCUSD) in characters
+
 
 static const size_t jcapacity = JSON_ARRAY_SIZE(2) + JSON_ARRAY_SIZE(10);   //size of json to parse ticker api (according to https://arduinojson.org/v6/assistant/)
 
@@ -54,14 +56,14 @@ static int symnum = 0;
 //array for ticker data
 struct  symboldata_t 
 {
-    char symbol[SYMBOL_LEN + 1];
+    char symbol[SYMBOL_MAX_LEN + 1];
     long chanid;
     float price;
     float change;
     bool hb;
 };
 
-symboldata_t symarray[16];
+symboldata_t symarray[SYMBOL_MAX_COUNT];
 
 StaticJsonDocument<jcapacity> jdoc;
 Ticker symticker; //ticker to switch symbols
@@ -141,6 +143,8 @@ void rstwmcfg()
 
 void nextsymidx() 
 {
+    uint32 free_heap = ESP.getFreeHeap();
+    Serial.printf_P(PSTR("[ESP] free memory: %dB %.1fkB\n"), free_heap, (float)free_heap / 1024);  //show free heap
     prevval = INSANE_PREVVAL;         //change prevval to insane value to ensure it will redraw display
     
     if ((cfg.show_ch24 == true) and (dispchng == false)) {          //should we show and are we showing 24h change?
@@ -284,10 +288,15 @@ void parsesymbols(const char * const s)
     do {                                                                                        
         pos_p = strchr(last_p, ' ');    //try to find ' ' (=space)
         
-        if (((pos_p != NULL) and ((pos_p - last_p) == SYMBOL_LEN))                              //found symbol of correct length
-                or ((pos_p == NULL) and (strlen(last_p) == SYMBOL_LEN))) {                      //found last symbol of correct length
-            memset(symarray[symnum].symbol, '\0', sizeof(symarray[symnum].symbol));             //.symbol defined as [SYMBOL_LEN + 1]
-            strncpy(symarray[symnum].symbol, last_p, sizeof(symarray[symnum].symbol) - 1);
+        if (((pos_p != NULL) and ((pos_p - last_p) <= SYMBOL_MAX_LEN) and ((pos_p - last_p) > 0))                              //found symbol of correct length
+                or ((pos_p == NULL) and (strlen(last_p) <= SYMBOL_MAX_LEN) and (strlen(last_p) > 0))) {                      //found last symbol of correct length
+            memset(symarray[symnum].symbol, '\0', sizeof(symarray[symnum].symbol));             //.symbol defined as [SYMBOL_MAX_LEN + 1]
+            //strncpy(symarray[symnum].symbol, last_p, sizeof(symarray[symnum].symbol) - 1);
+            if (pos_p != NULL) {
+                strncpy(symarray[symnum].symbol, last_p, pos_p - last_p);
+            } else {
+                strncpy(symarray[symnum].symbol, last_p, strlen(last_p));
+            }
             symarray[symnum].hb = false;
             symnum++;    
         } 
@@ -295,7 +304,7 @@ void parsesymbols(const char * const s)
         if (pos_p != NULL) {
             last_p = pos_p + 1; //set laspt_p behind the space found
         }
-    } while (pos_p != NULL);
+    } while ((pos_p != NULL) and (symnum < SYMBOL_MAX_COUNT));
 }
 
 void cfgbywm()

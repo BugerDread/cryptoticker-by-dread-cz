@@ -1,0 +1,9 @@
+{"method": "UNSUBSCRIBE","params":["btcusdt@miniTicker"],"id": 312}
+
+{"method": "SUBSCRIBE","params":["btcusdt@miniTicker"],"id": 312}
+
+{"method": "GET_PROPERTY","params":["combined"],"id": 2}
+
+{"method": "LIST_SUBSCRIPTIONS","id": 3}
+
+{"method": "SET_PROPERTY","params":["combined",false],"id": 5}
