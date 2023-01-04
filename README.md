@@ -17,23 +17,23 @@ Ticker shows the price(s) of chosen cryptocurrencies. Data comes from Binance we
 * WiFiManager library (by tzapu) - again lib mngr
 * Clone of [this repo](https://github.com/BugerDread/cryptoticker-by-dread-cz)
 2. Hook up the display to the ESP
-* for ESP8266 connect:
-  * Vcc to 3V3
-  * GND to GND
-  * DIN to GPIO13
-  * CS to GPIO15
-  * CLK to GPIO14
-* for ESP32-C3 connect:
-  * Vcc to 3V3
-  * GND to GND
-  * DIN to GPIO7
-  * CS3 to GPIO5
-  * CLK to GPIO6
+  * for ESP8266 connect:
+    * Vcc to 3V3
+    * GND to GND
+    * DIN to GPIO13
+    * CS to GPIO15
+    * CLK to GPIO14
+  * for ESP32-C3 connect:
+    * Vcc to 3V3
+    * GND to GND
+    * DIN to GPIO7
+    * CS to GPIO5
+    * CLK to GPIO6
 3. If you are going to use pair of displays hook up the 2nd to the output of the 1st one.
-4. Hook up the ESP to the computer, launch Arduino, open the ticker-ws-ticker.ino 
-5. Configure the project
-* if you are using pair of displays change "static const uint8_t DISP_AMOUNT = 1;" at the top of the code to "static const uint8_t DISP_AMOUNT = 2;"
-* adjust "static const char ourtimezone[] PROGMEM = "Europe/Prague";" to fit your timezone
+4. Hook up the ESP to the computer, launch Arduino, open the ticker-ws-ticker.ino.
+5. Configure the project:
+  * if you are using pair of displays change "DISP_AMOUNT = 1;" at the top of the code to "DISP_AMOUNT = 2;"
+  * adjust "ourtimezone[] PROGMEM = "Europe/Prague";" to fit your timezone
 6. Upload code to the board.
 7. Wait until the display reads "config 192.168.4.1" (it may take about 15seconds).
 8. Connect to the "Bgr ticker" WiFi network (via phone or computer - password is "btcbtcbtc") and open http://192.168.4.1 in your web browser it if doesnt do so automatically.
