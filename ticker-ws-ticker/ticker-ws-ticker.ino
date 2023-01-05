@@ -14,7 +14,7 @@
 // configuration
 static const uint8_t DISP_AMOUNT = 1;                       //number of max 7seg modules connected
 static const char ourtimezone[] PROGMEM = "Europe/Prague";  //official timezone names https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-static const char NTP_SRV[] PROGMEM = "pool.ntp.org";     //eg pool.ntp.org
+//static const char NTP_SRV[] PROGMEM = "pool.ntp.org";     //eg pool.ntp.org
 static const uint32_t NTP_SYNC_INTERVAL = 39600;   //base ntp interval
 static const uint32_t NTP_SYNC_INTERVAL_RND = 3600;    //random ntp interval - ntp update after NTP_SYNC_INTERVAL+random(NTP_SYNC_INTERVAL_RND)
 static const uint32_t SPI_SPEED = 8000000;                  //SPI speed in Hz (8MHZ may cause problems when usb voltage lower)
@@ -453,7 +453,7 @@ void ntp_init() {
   Serial.print(F("[Setup] Syncing time with NTP servers"));
 
   setDebug(INFO);
-  setServer(NTP_SRV);
+  //setServer(NTP_SRV);
   //sync ntp clock
   while (!waitForSync(3)) {
     Serial.print(F("."));
