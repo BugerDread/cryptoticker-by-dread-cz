@@ -603,7 +603,8 @@ void loop()
       //but show symbol name on 1st display but if we have two displays and diplay is for update first
       if ((DISP_AMOUNT == 2) and dispupd) {
         //Serial.println(F("[LED] showing symbol name"));
-        snprintf(dbuff, sizeof(dbuff), " %s ", symarray[symi].symbol);
+        Serial.println(symarray[symi].symbol);
+        snprintf(dbuff, sizeof(dbuff), "%-8s", symarray[symi].symbol);
         ld.print(dbuff, 1);
       }
       
