@@ -12,7 +12,7 @@
 #include <ezTime.h>               //https://github.com/ropg/ezTime
 
 // configuration
-static const uint8_t DISP_AMOUNT = 1;                       //number of max 7seg modules connected
+static const uint8_t DISP_AMOUNT = 2;                       //number of max 7seg modules connected
 static const char ourtimezone[] PROGMEM = "Europe/Prague";  //official timezone names https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 //static const char NTP_SRV[] PROGMEM = "pool.ntp.org";     //eg pool.ntp.org
 static const uint32_t NTP_SYNC_INTERVAL = 39600;   //base ntp interval
@@ -21,10 +21,10 @@ static const uint32_t SPI_SPEED = 8000000;                  //SPI speed in Hz (8
 #ifdef ESP8266
   static const uint8_t SPI_CSPIN = 15;  //SPI CS for display
 #else
-  static const uint8_t SPI_CSPIN = 5;
+  static const uint8_t SPI_CSPIN = 7; //5;
   //these pins could be changed for ESP32 only, for ESP8266 these are: MOSI = GPIO13, SCLK = GPIO14
-  static const uint8_t ESP32_SPI_CLKPIN = 6;
-  static const uint8_t ESP32_SPI_MOSIPIN = 7;
+  static const uint8_t ESP32_SPI_CLKPIN = 2;  //6;
+  static const uint8_t ESP32_SPI_MOSIPIN = 3; //7;
   static const uint8_t ESP32_SPI_MISOPIN = 10;                    //not used but needs to be defined
 #endif
 
@@ -330,8 +330,8 @@ void cfgbywm(bool ondemand)
 
     if (ondemand) {
         if (!wifiManager.startConfigPortal(CFGPORTAL_SSID, CFGPORTAL_PWD)) {  //start cfg ap to be able to reconfigure
-            Serial.println(F("Ondemand config portal timeout, trying to connect again"));
-            reboot();                                           //reset and try again, or maybe put it to deep sleep
+            Serial.println(F("Ondemand config exit, trying to connect again"));
+                                                                                                                                                                                          reboot();                                           //reset and try again, or maybe put it to deep sleep
         }
     } else {
         if (!wifiManager.autoConnect(CFGPORTAL_SSID, CFGPORTAL_PWD)) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
@@ -490,6 +490,13 @@ void setup()
     // initialize digital pin LED_BUILTIN as an output and turn off the LED
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
+#else
+    //esp32
+    //luatos ledz are gpio 12, 13 active high
+    pinMode(12, OUTPUT);
+    digitalWrite(12, LOW);
+    pinMode(13, OUTPUT);
+    digitalWrite(13, LOW);
 #endif    
 
     pinMode(CFGPORTAL_BUTTON, INPUT_PULLUP);  //button for reset of params
