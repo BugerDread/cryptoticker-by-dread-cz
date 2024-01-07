@@ -2,6 +2,10 @@
 //https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-streams.md
 //maybe better to use candlestick data?? bcs of low volume pairs, miniticker updates only if there is a change
 
+//#define EZTIME_CACHE_NVS needs to be enabled in libraries/ezTime/src/ezTime.h for esp32
+//#define EZTIME_CACHE_EEPROM needs to be enabled in libraries/ezTime/src/ezTime.h for esp8266
+
+
 #include <esp8266_hw_spi_max7219_7seg.h>  //https://github.com/BugerDread/esp8266-hw-spi-max7219-7seg
 #include <Ticker.h>
 #define ARDUINOJSON_USE_LONG_LONG 1
@@ -17,7 +21,7 @@ static const char ourtimezone[] PROGMEM = "Europe/Prague";  //official timezone 
 //static const char NTP_SRV[] PROGMEM = "pool.ntp.org";     //eg pool.ntp.org
 static const uint32_t NTP_SYNC_INTERVAL = 39600;   //base ntp interval
 static const uint32_t NTP_SYNC_INTERVAL_RND = 3600;    //random ntp interval - ntp update after NTP_SYNC_INTERVAL+random(NTP_SYNC_INTERVAL_RND)
-static const uint32_t SPI_SPEED = 8000000;                  //SPI speed in Hz (8MHZ may cause problems when usb voltage lower)
+static const uint32_t SPI_SPEED = 2000000;                  //SPI speed in Hz (8MHZ may cause problems when usb voltage lower)
 #ifdef ESP8266
   static const uint8_t SPI_CSPIN = 15;  //SPI CS for display
 #else
@@ -130,22 +134,27 @@ bool show_cfg_check_checksum()
 
 bool get_cfg_eeprom()
 {
+    EEPROM.begin(sizeof(cfg));
     Serial.println(F("Loading cfg from EEPROM"));
     EEPROM.get(0, cfg);
     return show_cfg_check_checksum();
+    EEPROM.end();
 }
 
 bool save_cfg_eeprom()
 {
+    EEPROM.begin(sizeof(cfg));
     Serial.println(F("Saving cfg to EEPROM"));
     cfg.checksum = cfg_checksum();
     show_cfg_check_checksum();
     EEPROM.put(0, cfg);
     if (!EEPROM.commit()) {
         Serial.println(F("EEPROM error, cant save cfg"));
+        EEPROM.end();
         return false;
     }
     Serial.println(F("Cfg saved to EEPROM"));
+    EEPROM.end();
     return true;   
 }
 
@@ -511,7 +520,7 @@ void setup()
     delay(1000);
     
     //get configuration from eeprom
-    EEPROM.begin(512);
+    //EEPROM.begin(512);
     if (!get_cfg_eeprom()) {
         //configuration in eeprom is not valid - we need to create default one
         Serial.println(F("EEPROM checksum invalid, creating default configuration"));
@@ -556,8 +565,9 @@ void loop()
 
     if (secondChanged()) {
       myTZ.dateTime();    //needs to be here otherwise secondChange is not cleared
-      disppage == 0 ? cycletime = cfg.cycle_time * 2 : cycletime = cfg.cycle_time;
-      if (++timcounter >= cycletime) {
+      //disppage == 0 ? cycletime = cfg.cycle_time * 2 : cycletime = cfg.cycle_time;
+      //if (++timcounter >= cycletime) {
+      if (++timcounter >= cfg.cycle_time) {
         timcounter = 0;
         nextsymidx();
       }
