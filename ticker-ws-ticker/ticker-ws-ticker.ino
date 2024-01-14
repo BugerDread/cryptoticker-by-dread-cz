@@ -35,7 +35,7 @@ static const uint32_t SPI_SPEED = 2000000;                  //SPI speed in Hz (8
 static const uint8_t SYMBOL_MAX_LEN = 10;                   //max length of each symbol (like BTCUSD) in characters
 static const uint8_t SYMBOL_MAX_COUNT = 16; 
 
-static const uint8_t CFGPORTAL_TIMEOUT = 120;               //timeout for config portal in seconds
+static const uint8_t CFGPORTAL_TIMEOUT = 300;               //timeout for config portal in seconds
 #ifdef ESP8266
   static const uint8_t CFGPORTAL_BUTTON = 0;                 //flash button on nodemcu boards (ESP8266)
 #else
@@ -171,6 +171,7 @@ void nextsymidx()
 {
     uint32_t free_heap = ESP.getFreeHeap();
     Serial.printf_P(PSTR("[ESP] free memory: %dB %.1fkB\n"), free_heap, (float)free_heap / 1024);  //show free heap
+    if ((cfg.show_ch24 == false) and (disppage != 0)) disppage++; //skip 24hr change if we dont want to see it
     if (++disppage > (symnum * 2)) disppage = 0;
     dispupd = true;
 }
@@ -327,7 +328,10 @@ void cfgbywm(bool ondemand)
      
     WiFiManagerParameter custom_ch24_checkbox("ch24_chbx", "Show 24hr change", CFGPORTAL_CH24CHBX_VALUE, strlen(CFGPORTAL_CH24CHBX_VALUE), checkbox_buf, WFM_LABEL_BEFORE);
   
-    wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
+    shouldSaveConfig = false;
+    
+    //wifiManager.setSaveConfigCallback(saveConfigCallback);  //set config save notify callback
+    wifiManager.setSaveParamsCallback(saveConfigCallback);  //set config save notify callback
     wifiManager.setAPCallback(configModeCallback);          //flash led if in config mode
     wifiManager.addParameter(&custom_symbol);
     wifiManager.addParameter(&custom_sbrightness);
@@ -336,27 +340,18 @@ void cfgbywm(bool ondemand)
     //wifiManager.setMinimumSignalQuality();                //set minimum quality of signal so it ignores AP's under that quality, defaults to 8%
     wifiManager.setTimeout(CFGPORTAL_TIMEOUT);                          //sets timeout until configuration portal gets turned off useful to make it all retry or go to sleep in seconds
 
-
     if (ondemand) {
-        if (!wifiManager.startConfigPortal(CFGPORTAL_SSID, CFGPORTAL_PWD)) {  //start cfg ap to be able to reconfigure
-            Serial.println(F("Ondemand config portal timeout, trying to connect again"));
-            reboot();                                           //reset and try again, or maybe put it to deep sleep
-        }
+        wifiManager.startConfigPortal(CFGPORTAL_SSID, CFGPORTAL_PWD); //start cfg ap to be able to reconfigure
+        Serial.println(F("Ondemand config portal exited or timeout"));
     } else {
         if (!wifiManager.autoConnect(CFGPORTAL_SSID, CFGPORTAL_PWD)) {  //fetches ssid and pass and tries to connect if it does not connect it starts an access point with the specified name and goes into a blocking loop awaiting configuration
-            Serial.println(F("Autoconnect onfig portal timeout, trying to connect again"));
+            Serial.println(F("Autoconnect config portal timeout, trying to connect again"));
             reboot();                                          //reset and try again, or maybe put it to deep sleep
         }
     }
   
-    Serial.println(F("WiFi connected... :)"));             //if you get here you have connected to the WiFi
-    ld.print(F("  wifi  "), 1);
-    if (DISP_AMOUNT == 2) {
-        ld.print(F(" online "), 2);
-    }
-    
     //params modified using WM, process them and save to EEPROM
-    if (shouldSaveConfig or ondemand) {
+    if (shouldSaveConfig) {
         memset(cfg.symbols, '\0', sizeof(cfg.symbols));
         strncpy(cfg.symbols, custom_symbol.getValue(), sizeof(cfg.symbols) - 1);              
         strlwr(cfg.symbols);    //uppercase symbols
@@ -365,15 +360,27 @@ void cfgbywm(bool ondemand)
         parsesymbols(cfg.symbols);    //needs to be also here because we are checking that symnum > 0 (that we have some valid symbols)
         cfg.show_ch24 = (strcmp(custom_ch24_checkbox.getValue(), CFGPORTAL_CH24CHBX_VALUE) == 0);
   
-        //check that everything is valid
-        if  ((cfg.brightness <= 0) or (cfg.brightness > 16)
-                or (cfg.cycle_time <= 0) or (cfg.cycle_time > 99) or (symnum == 0)) {
-            Serial.println(F("Parametters out of range, restart config portal"));
-            WiFi.disconnect();
-            reboot(); 
+        //check that everything is valid and save
+        if  (!((cfg.brightness <= 0) or (cfg.brightness > 16)
+                or (cfg.cycle_time <= 0) or (cfg.cycle_time > 99) or (symnum == 0))) {
+            Serial.println(F("Parametters OK, saving"));
+            cfg.brightness = cfg.brightness - 1;  //brightness range 0-15, but atoi return 0 when error so we made it 1-16 and here is the correction
+            save_cfg_eeprom();
+            //WiFi.disconnect();
+            //reboot(); 
+        } else {
+          Serial.println(F("Parametters out of range, NOT saving"));
         }
-        cfg.brightness = cfg.brightness - 1;  //brightness range 0-15, but atoi return 0 when error so we made it 1-16 and here is the correction
-        save_cfg_eeprom();
+    }
+
+    if (ondemand) {
+      reboot();  //reboot to apply changes
+    }
+
+    Serial.println(F("WiFi connected... :)"));             //if you get here you have connected to the WiFi
+    ld.print(F("  wifi  "), 1);
+    if (DISP_AMOUNT == 2) {
+        ld.print(F(" online "), 2);
     }
 }
 
